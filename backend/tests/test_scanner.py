@@ -17,3 +17,25 @@ def test_sibling_meshes_and_textures_folders(app_client, run_jobs, tmp_path):
         assert mats == [n], (n, mats)
         assert {f["label"] for f in model["files"] if f["role"] == "texture"} == {"base_color", "normal", "orm"}
         assert model["meta"]["pack"] == "RockPack"
+
+
+def test_megascans_sidecar_json(app_client, run_jobs, tmp_path):
+    import json
+
+    d = tmp_path / "Megascans" / "Mossy_Rock_vkpgcfd"
+    write_obj(d / "vkpgcfd_LOD0.obj")
+    for ch in ("Albedo", "Normal", "Roughness"):
+        write_png(d / f"vkpgcfd_4K_{ch}.png")
+    (d / "vkpgcfd.json").write_text(json.dumps({
+        "id": "vkpgcfd", "name": "Mossy Rock", "tags": ["rock", "moss"], "categories": ["3d", "nature"],
+        "semanticTags": {"asset_type": "3D asset", "color": ["green", "gray"], "environment": ["forest"]},
+        "meta": [{"key": "height", "name": "Height", "value": "1.2 m"}],
+    }))
+    src = app_client.post("/api/sources", json={"path": str(tmp_path / "Megascans")}).json()
+    run_jobs()
+    items = {a["name"]: a for a in app_client.get("/api/assets", params={"source": src["id"]}).json()["items"]}
+    model = app_client.get(f"/api/assets/{items['vkpgcfd_LOD0']['id']}").json()
+    assert {"rock", "moss", "nature", "forest", "green"} <= set(model["tags"])
+    assert model["meta"]["sidecar"]["name"] == "Mossy Rock"
+    assert model["meta"]["sidecar"]["properties"]["Height"] == "1.2 m"
+    assert "forest" in items["vkpgcfd"]["tags"]  # the texture set too

@@ -512,6 +512,23 @@ class Scanner:
             tick()
 
         self.db.flush()
+        # --- pack metadata sidecars (Megascans / Fab JSON: name, tags, categories, semantic tags)
+        by_dir: dict[Path, list[Asset]] = defaultdict(list)
+        for a, m, _ in model_assets:
+            by_dir[m.parent].append(a)
+            by_dir[_anchor_dir(m.parent)].append(a)
+        for (gdir, _), sa in set_assets.items():
+            by_dir[gdir].append(sa)
+        for d, members in by_dir.items():
+            info = _sidecar_metadata(d)
+            if not info:
+                continue
+            for a in dict.fromkeys(members):
+                self.add_tags(a, info["tags"])
+                if info.get("description") and not a.description:
+                    a.description = info["description"]
+                a.meta = {**(a.meta or {}), "sidecar": info}
+
         for a, _, _ in model_assets:
             index_asset(self.db, a)
         for a in set_assets.values():
@@ -782,6 +799,51 @@ def _anchor_dir(d: Path) -> Path:
     if d.name.lower() in TEXTURE_DIR_NAMES or d.name.lower() in MODEL_DIR_NAMES:
         return d.parent
     return d
+
+
+def _sidecar_metadata(d: Path) -> dict | None:
+    """Read a vendor metadata JSON next to the files (Quixel Megascans / Fab style)."""
+    try:
+        candidates = [p for p in d.glob("*.json") if p.stat().st_size < 2 * 1024 * 1024]
+    except OSError:
+        return None
+    for p in candidates[:5]:
+        try:
+            data = json.loads(p.read_text("utf-8", "replace"))
+        except (ValueError, OSError):
+            continue
+        if not isinstance(data, dict) or not any(k in data for k in ("tags", "semanticTags", "categories")):
+            continue
+        tags: list[str] = []
+
+        def add(v):
+            if isinstance(v, str):
+                v = v.strip().lower()
+                if v and len(v) <= 40 and v not in tags:
+                    tags.append(v)
+            elif isinstance(v, list):
+                for x in v:
+                    add(x)
+
+        add(data.get("tags"))
+        add(data.get("categories"))
+        sem = data.get("semanticTags")
+        if isinstance(sem, dict):
+            for key in ("asset_type", "subject_matter", "theme", "environment", "descriptive", "color", "contains"):
+                add(sem.get(key))
+        meta = {}
+        for item in data.get("meta", []) if isinstance(data.get("meta"), list) else []:
+            if isinstance(item, dict) and item.get("name") and item.get("value") is not None:
+                meta[str(item["name"])] = item["value"]
+        return {
+            "file": p.name,
+            "name": data.get("name") or "",
+            "id": str(data.get("id") or ""),
+            "tags": tags[:25],
+            "description": data.get("description") if isinstance(data.get("description"), str) else "",
+            "properties": meta,
+        }
+    return None
 
 
 def _pack_for(source_path: str) -> str:
