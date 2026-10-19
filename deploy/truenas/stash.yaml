@@ -24,6 +24,9 @@ services:
       STASH_BLENDER_TIMEOUT: "3600"    # seconds without progress before a Blender job is stopped
       STASH_EXPORT_CACHE_GB: "5"       # cached downloads/conversions; oldest are evicted
       STASH_PREVIEW_TEXTURE_SIZE: "1024"
+      STASH_LOCAL_AI: "true"           # on-device tag suggestions + smart search (downloads ~600 MB once)
+      STASH_AI_THREADS: "2"
+      STASH_AI_IDLE_UNLOAD: "1800"     # free the model's ~700 MB RAM after 30 min without use
       STASH_BROWSE_ROOTS: "/library,/data/uploads"
       # STASH_PASSWORD: "change-me"    # require a login (also the token for the Blender/Unreal plugins)
       # ANTHROPIC_API_KEY: "sk-ant-..." # optional cloud AI tagging

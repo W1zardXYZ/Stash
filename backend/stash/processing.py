@@ -22,7 +22,7 @@ from .models import Asset, AssetFile, AssetLink, Job, Project, Source, Tag
 from .search import index_asset
 from .storage import add_linked_file, add_stored_file, resolve, store_bytes
 
-PRIORITY = {"scan_source": 50, "thumbnail": 20, "extract_blend": 10, "preview": 5, "export": 40, "package_project": 30, "ai_tag": 2}
+PRIORITY = {"scan_source": 50, "thumbnail": 20, "extract_blend": 10, "preview": 5, "export": 40, "package_project": 30, "ai_tag": 2, "embed_pending": 1}
 
 
 def queue_followups(db: Session, followups) -> int:
@@ -52,6 +52,7 @@ def job_scan(ctx: JobContext):
             src.status = "idle"
             src.meta = {**(src.meta or {}), "last_result": result}
         ctx.log(f"scan finished: {result}")
+        queue_embeddings()
         return result
     except Exception:
         with session_scope() as db:
@@ -230,6 +231,7 @@ def job_extract_blend(ctx: JobContext):
             asset = db.get(Asset, ctx.asset_id)
             result = ingest_manifest(db, asset, manifest, out, ctx)
         ctx.log(f"extracted {result['assets']} assets")
+        queue_embeddings()
         return result
     finally:
         shutil.rmtree(out, ignore_errors=True)
@@ -295,6 +297,7 @@ def job_preview(ctx: JobContext):
                     asset.kind = "skeletal_model"
             if stats.get("actions"):
                 asset.is_animated = True
+        queue_embeddings()
         return {"stats": stats}
     finally:
         shutil.rmtree(out, ignore_errors=True)
@@ -343,6 +346,7 @@ def job_thumbnail(ctx: JobContext):
         db.flush()
         if asset.thumbnail_file_id is None or asset.kind in ("texture", "hdri", "material"):
             asset.thumbnail_file_id = af.id
+    queue_embeddings()
     return {"thumbnail": True}
 
 
@@ -374,6 +378,82 @@ def job_ai_tag(ctx: JobContext):
     return result
 
 
+# ----------------------------------------------------------------------------- on-device AI
+
+EMBED_BATCH = 200
+
+
+def queue_embeddings(db: Session | None = None) -> None:
+    """Make sure an embed job is queued (de-duplicated) when local AI is on."""
+    from . import vision
+
+    if vision.enabled():
+        enqueue("embed_pending", {}, priority=PRIORITY["embed_pending"], db=db)
+
+
+def _pending_embeddings(db: Session, limit: int):
+    from .models import AssetEmbedding
+
+    q = (
+        db.query(Asset, AssetFile, AssetEmbedding)
+        .join(AssetFile, AssetFile.id == Asset.thumbnail_file_id)
+        .outerjoin(AssetEmbedding, AssetEmbedding.asset_id == Asset.id)
+        .filter(
+            (AssetEmbedding.asset_id.is_(None))
+            | (AssetEmbedding.source_sha != AssetFile.sha256)
+            | (AssetEmbedding.model != settings.clip_model)
+        )
+        .limit(limit)
+    )
+    return q.all()
+
+
+@handler("embed_pending")
+def job_embed_pending(ctx: JobContext):
+    """Embed thumbnails that have no (or an outdated) embedding, then suggest tags from them."""
+    import numpy as np
+
+    from . import vision
+    from .models import AssetEmbedding
+
+    if not vision.enabled():
+        return {"skipped": "local AI disabled"}
+    ctx.progress(0.0, "loading model" if not vision.model_ready() else "embedding")
+    model = vision.clip()
+    vision.vocabulary()
+    done = failed = 0
+    with session_scope() as db:
+        batch = [(a.id, resolve(f), f.sha256) for a, f, _e in _pending_embeddings(db, EMBED_BATCH)]
+    for i, (asset_id, path, sha) in enumerate(batch):
+        ctx.check_cancel()
+        try:
+            vec = model.embed_image(path)
+        except Exception as e:  # unreadable thumbnail - skip it, keep going
+            failed += 1
+            ctx.log(f"asset {asset_id}: {e}")
+            vec = None
+        with session_scope() as db:
+            asset = db.get(Asset, asset_id)
+            if asset is None:
+                continue
+            row = db.get(AssetEmbedding, asset_id) or AssetEmbedding(asset_id=asset_id)
+            row.model = settings.clip_model
+            row.source_sha = sha or ""
+            row.vector = (vec if vec is not None else np.zeros(model.dim, dtype=np.float32)).astype(np.float16).tobytes()
+            db.merge(row)
+            if vec is not None:
+                channel = (asset.meta or {}).get("channel")
+                asset.meta = {**(asset.meta or {}), "auto_tags": vision.suggest_tags(vec, asset.kind, channel)}
+                index_asset(db, asset)
+                done += 1
+        ctx.progress((i + 1) / max(len(batch), 1), f"{i + 1}/{len(batch)}")
+    vision.index.invalidate()
+    if len(batch) == EMBED_BATCH:
+        # more left: re-queue so scans/exports can run in between batches
+        enqueue("embed_pending", {}, priority=PRIORITY["embed_pending"], dedupe=False)
+    return {"embedded": done, "failed": failed}
+
+
 # ----------------------------------------------------------------------------- scheduled rescans
 
 def scheduler_loop(stop_event) -> None:
@@ -382,6 +462,12 @@ def scheduler_loop(stop_event) -> None:
 
     last_gc = time.time()
     while not stop_event.wait(60):
+        try:
+            from . import vision
+
+            vision.unload_if_idle()
+        except Exception:
+            pass
         if time.time() - last_gc > 24 * 3600:
             last_gc = time.time()
             try:

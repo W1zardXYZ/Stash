@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     JSON,
+    LargeBinary,
     Boolean,
     Column,
     DateTime,
@@ -230,3 +231,16 @@ class Delivery(Base):
     message: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AssetEmbedding(Base):
+    """CLIP embedding of an asset's thumbnail (float16 bytes), for tags, semantic search, similarity."""
+
+    __tablename__ = "asset_embeddings"
+
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True)
+    model: Mapped[str] = mapped_column(String(100))
+    vector: Mapped[bytes] = mapped_column(LargeBinary)
+    # sha256 of the thumbnail it was computed from - a new thumbnail means a new embedding
+    source_sha: Mapped[str] = mapped_column(String(64), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

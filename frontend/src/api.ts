@@ -37,6 +37,7 @@ export interface AssetBrief {
   updated_at: string | null;
   ue_class: string | null;
   child_count: number | null;
+  score?: number;
 }
 
 export interface AssetFile {
@@ -132,6 +133,7 @@ export interface Status {
   jobs: Record<string, number>;
   auth: boolean;
   ai: boolean;
+  local_ai: { enabled: boolean; model?: string; downloaded?: boolean; embedded?: number };
   browse_roots: string[];
   data_dir: string;
 }

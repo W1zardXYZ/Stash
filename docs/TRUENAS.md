@@ -53,7 +53,20 @@ FBX/OBJ). It runs in the background; the library is browsable immediately and fi
 finish (see **Jobs**). Indexing itself (folders, texture sets, Unreal headers) handles thousands of
 files per second.
 
-## 4. Optional
+## 4. On-device AI on the N100
+
+With `STASH_LOCAL_AI=true` (default) Stash downloads a CLIP model (ViT-B-32, ~600 MB, once, into
+`/data/models`) on the first scan and embeds every thumbnail on the CPU. Measured on a desktop
+CPU: ~0.1 s per image; expect a few times that on an N100, i.e. roughly 10–20 minutes per
+5,000 assets on first indexing (estimate). With the model loaded the container uses ~850 MB in
+total; it unloads after 30 idle minutes (`STASH_AI_IDLE_UNLOAD`), and the next Smart search or new
+thumbnail reloads it in ~10–20 s.
+
+What you get: suggested tags on each asset page (click to add, or select many → *Accept
+suggestions*), the **Smart** toggle next to the search box, and *Visually similar* under Related.
+No internet access is needed after the model download; set `STASH_LOCAL_AI=false` to turn it off.
+
+## 5. Optional
 
 * **Password:** set `STASH_PASSWORD`; the Blender add-on and Unreal plugin use it as their token.
 * **Reverse proxy / remote access:** set `STASH_PUBLIC_URL` so the Blender extension repository

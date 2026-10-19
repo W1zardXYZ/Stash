@@ -17,7 +17,7 @@ from ..db import get_db
 from ..images import normalize_thumbnail
 from ..jobs import enqueue
 from ..models import Asset, AssetFile, AssetLink, Job, Project, ProjectAsset, Source, Tag, asset_tags
-from ..processing import PRIORITY
+from ..processing import PRIORITY, queue_embeddings
 from ..search import index_asset, ranked_subquery, unindex_asset
 from ..storage import resolve, store_bytes
 from .common import ser_asset_brief, ser_file, ser_job
@@ -129,12 +129,15 @@ def list_assets(
     status: str | None = None,
     ue_class: str | None = None,
     pack: str | None = None,
+    semantic: bool = False,
     sort: str = "updated",
     order: str = "desc",
     page: int = Query(1, ge=1),
     per_page: int = Query(60, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
+    if semantic and q:
+        return _semantic_list(db, q, kind, tags, project, source, format, flags, parent, status, ue_class, pack, page, per_page)
     query, ranked = build_query(db, q, kind, tags, project, source, format, flags, parent, status, ue_class, pack)
     total = query.count()
     if ranked is not None and sort == "relevance":
@@ -152,6 +155,70 @@ def list_assets(
         d["child_count"] = child_counts.get(a.id, 0)
         items.append(d)
     return {"total": total, "page": page, "per_page": per_page, "items": items}
+
+
+def _brief_page(db: Session, rows: list[Asset], scores: dict[int, float] | None = None) -> list[dict]:
+    child_counts = dict(
+        db.query(Asset.parent_id, func.count(Asset.id)).filter(Asset.parent_id.in_([a.id for a in rows])).group_by(Asset.parent_id).all()
+    )
+    items = []
+    for a in rows:
+        d = ser_asset_brief(a)
+        d["child_count"] = child_counts.get(a.id, 0)
+        if scores is not None:
+            d["score"] = round(scores.get(a.id, 0.0), 3)
+        items.append(d)
+    return items
+
+
+def _semantic_list(db, q, kind, tags, project, source, fmt, flags, parent, status, ue_class, pack, page, per_page):
+    """Rank by CLIP similarity between the query text and asset thumbnails, then apply filters."""
+    from .. import vision
+
+    if not vision.enabled():
+        raise HTTPException(400, "on-device AI is disabled (STASH_LOCAL_AI=false)")
+    from ..search import search_ids
+
+    scores = vision.hybrid_rank(vision.text_search(db, q), set(search_ids(db, q, limit=5000) or []))
+    query, _ = build_query(db, None, kind, tags, project, source, fmt, flags, parent, status, ue_class, pack)
+    rows = query.filter(Asset.id.in_(list(scores))).options(selectinload(Asset.tags), selectinload(Asset.thumbnail)).all()
+    rows.sort(key=lambda a: -scores[a.id])
+    page_rows = rows[(page - 1) * per_page : page * per_page]
+    return {"total": len(rows), "page": page, "per_page": per_page, "items": _brief_page(db, page_rows, scores), "semantic": True}
+
+
+@router.get("/assets/{asset_id}/similar")
+def similar_assets(asset_id: int, limit: int = Query(24, ge=1, le=100), db: Session = Depends(get_db)):
+    from .. import vision
+
+    if not vision.enabled():
+        return {"items": []}
+    hits = vision.similar(db, asset_id, limit=limit)
+    scores = dict(hits)
+    rows = db.query(Asset).filter(Asset.id.in_(list(scores)), Asset.status != "missing").options(selectinload(Asset.tags), selectinload(Asset.thumbnail)).all()
+    rows.sort(key=lambda a: -scores[a.id])
+    return {"items": _brief_page(db, rows, scores)}
+
+
+class AcceptBody(BaseModel):
+    ids: list[int]
+    min_score: float = 0.0
+
+
+@router.post("/ai/accept-suggestions")
+def accept_suggestions(body: AcceptBody, db: Session = Depends(get_db)):
+    """Turn on-device tag suggestions into real tags for the given assets."""
+    n = 0
+    for a in db.query(Asset).filter(Asset.id.in_(body.ids)):
+        for s in (a.meta or {}).get("auto_tags") or []:
+            if s.get("score", 0) >= body.min_score and s.get("tag"):
+                t = _tag(db, s["tag"])
+                if t not in a.tags:
+                    a.tags.append(t)
+                    n += 1
+        index_asset(db, a)
+    db.commit()
+    return {"added": n}
 
 
 @router.get("/facets")
@@ -391,6 +458,7 @@ def set_thumbnail(asset_id: int, body: ThumbBody, db: Session = Depends(get_db))
     db.flush()
     a.thumbnail_file_id = af.id
     db.commit()
+    queue_embeddings()
     return {"thumbnail": f"/api/files/{af.id}/thumbnail.png"}
 
 
@@ -402,6 +470,7 @@ def choose_thumbnail(asset_id: int, file_id: int, db: Session = Depends(get_db))
         raise HTTPException(404, "file not found")
     a.thumbnail_file_id = f.id
     db.commit()
+    queue_embeddings()
     return {"ok": True}
 
 

@@ -72,6 +72,9 @@ async def ingest_bundle(file: UploadFile = File(...), db: Session = Depends(get_
         for entry in manifest.get("assets", []):
             results.append(_ingest_entry(db, source, root, origin, project, manifest, entry))
         db.commit()
+        from ..processing import queue_embeddings
+
+        queue_embeddings()
         return {"assets": results}
     finally:
         import shutil

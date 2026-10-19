@@ -57,6 +57,7 @@ export default function AssetPage() {
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
   const [aiEnabled, setAiEnabled] = useState(false);
+  const [similar, setSimilar] = useState<AssetBrief[] | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -75,6 +76,7 @@ export default function AssetPage() {
 
   useEffect(() => {
     setA(null);
+    setSimilar(null);
     setTab("overview");
     load();
   }, [load]);
@@ -196,7 +198,10 @@ export default function AssetPage() {
             ["files", `Files (${a.files.length})`],
             ...(graph ? [["graph", "Nodes"]] : []),
           ].map(([k, label]) => (
-            <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{label}</button>
+            <button key={k} className={tab === k ? "on" : ""} onClick={() => {
+              setTab(k);
+              if (k === "related" && similar === null) api.get<{ items: AssetBrief[] }>(`/api/assets/${a.id}/similar`).then((r) => setSimilar(r.items)).catch(() => setSimilar([]));
+            }}>{label}</button>
           ))}
         </div>
 
@@ -212,6 +217,16 @@ export default function AssetPage() {
                 )}
               </h5>
               {meta.category && <div className="small muted" style={{ marginBottom: 6 }}>Category: <b>{meta.category}</b></div>}
+              {(meta.auto_tags ?? []).filter((s: { tag: string }) => !a.tags.includes(s.tag)).length > 0 && (
+                <div className="chips" style={{ marginBottom: 8 }} title="Suggested by the on-device AI from the thumbnail - click to add">
+                  <span className="small muted"><Icon name="sparkle" size={12} /> Suggested:</span>
+                  {(meta.auto_tags as { tag: string; score: number }[]).filter((s) => !a.tags.includes(s.tag)).map((s) => (
+                    <button key={s.tag} className="tag" style={{ cursor: "pointer", borderStyle: "dashed" }} onClick={async () => { const r = await api.post<{ tags: string[] }>(`/api/assets/${a.id}/tags`, { tags: [s.tag] }); setA({ ...a, tags: r.tags }); }}>
+                      + {s.tag}
+                    </button>
+                  ))}
+                </div>
+              )}
               <TagInput
                 tags={a.tags}
                 suggestions={allTags}
@@ -297,7 +312,8 @@ export default function AssetPage() {
             {a.children.length > 0 && <RelGroup title={`Contains (${a.children.length})`} items={a.children} />}
             {groupLinks(linksOut, 0).map(([title, items]) => <RelGroup key={`o${title}`} title={title} items={items} />)}
             {groupLinks(linksIn, 1).map(([title, items]) => <RelGroup key={`i${title}`} title={title} items={items} />)}
-            {a.children.length + linksOut.length + linksIn.length === 0 && <div className="muted">No related assets.</div>}
+            {similar && similar.length > 0 && <RelGroup title="Visually similar" items={similar} />}
+            {a.children.length + linksOut.length + linksIn.length === 0 && !similar?.length && <div className="muted">No related assets.</div>}
           </div>
         )}
 

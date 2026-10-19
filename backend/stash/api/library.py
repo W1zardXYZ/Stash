@@ -41,8 +41,23 @@ def status(db: Session = Depends(get_db)):
         "jobs": jobs,
         "auth": auth_enabled(),
         "ai": ai_enabled(),
+        "local_ai": _local_ai(db),
         "browse_roots": _roots(),
         "data_dir": str(settings.data_dir),
+    }
+
+
+def _local_ai(db: Session) -> dict:
+    from .. import vision
+    from ..models import AssetEmbedding
+
+    if not vision.enabled():
+        return {"enabled": False}
+    return {
+        "enabled": True,
+        "model": settings.clip_model,
+        "downloaded": vision.model_ready(),
+        "embedded": db.query(func.count(AssetEmbedding.asset_id)).scalar(),
     }
 
 

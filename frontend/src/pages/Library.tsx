@@ -34,6 +34,7 @@ export default function Library({ projectId, header }: { projectId?: number; hea
   const sort = params.get("sort") ?? (q ? "relevance" : "updated");
   const order = params.get("order") ?? "desc";
   const rootOnly = params.get("root") === "1";
+  const smart = params.get("smart") === "1";
 
   const [items, setItems] = useState<AssetBrief[]>([]);
   const [total, setTotal] = useState(0);
@@ -49,6 +50,7 @@ export default function Library({ projectId, header }: { projectId?: number; hea
   const [bulkTag, setBulkTag] = useState(false);
   const [showSide, setShowSide] = useState(false);
   const [aiEnabled, setAiEnabled] = useState(false);
+  const [localAi, setLocalAi] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const reqId = useRef(0);
 
@@ -66,7 +68,7 @@ export default function Library({ projectId, header }: { projectId?: number; hea
   );
 
   const query = useMemo(
-    () => ({ q, kind: kinds, tags, flags, source, ue_class: ueClass, pack, sort, order, project: projectId, parent: rootOnly ? "root" : undefined }),
+    () => ({ q, kind: kinds, tags, flags, source, ue_class: ueClass, pack, semantic: smart && q ? 1 : undefined, sort, order, project: projectId, parent: rootOnly ? "root" : undefined }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [params.toString(), projectId],
   );
@@ -92,13 +94,13 @@ export default function Library({ projectId, header }: { projectId?: number; hea
 
   useEffect(() => {
     load(1);
-    api.get<Facets>(`/api/facets${qs({ q, source, project: projectId })}`).then(setFacets).catch(() => undefined);
-  }, [load, q, source, projectId]);
+    api.get<Facets>(`/api/facets${qs({ q: smart ? undefined : q, source, project: projectId })}`).then(setFacets).catch(() => undefined);
+  }, [load, q, source, projectId, smart]);
 
   useEffect(() => {
     api.get<Source[]>("/api/sources").then(setSources).catch(() => undefined);
     api.get<Project[]>("/api/projects").then(setProjects).catch(() => undefined);
-    getStatus().then((s) => setAiEnabled(s.ai)).catch(() => undefined);
+    getStatus().then((s) => { setAiEnabled(s.ai); setLocalAi(!!s.local_ai?.enabled); }).catch(() => undefined);
   }, []);
 
   useEffect(() => setSearchText(q), [q]);
@@ -147,7 +149,7 @@ export default function Library({ projectId, header }: { projectId?: number; hea
       await api.post("/api/assets/bulk", { ids: [...selected], ...body });
       toast(msg, "ok");
       load(1);
-      api.get<Facets>(`/api/facets${qs({ q, source, project: projectId })}`).then(setFacets);
+      api.get<Facets>(`/api/facets${qs({ q: smart ? undefined : q, source, project: projectId })}`).then(setFacets);
     } catch (e: any) {
       toast(e.message, "error");
     }
@@ -243,6 +245,11 @@ export default function Library({ projectId, header }: { projectId?: number; hea
             <input ref={searchRef} placeholder="Search names, tags, materials, bones… ( -exclude  &quot;phrase&quot; )" value={searchText} onChange={(e) => setSearchText(e.target.value)} />
             {searchText ? <button className="btn ghost sm icon" onClick={() => setSearchText("")}><Icon name="x" size={14} /></button> : <kbd>/</kbd>}
           </div>
+          {localAi && (
+            <button className={`btn ${smart ? "on" : ""}`} onClick={() => update({ smart: smart ? null : "1" })} title="Smart search: match what thumbnails look like, not just names and tags (on-device AI)">
+              <Icon name="sparkle" size={15} />Smart
+            </button>
+          )}
           <select className="input" style={{ width: 175 }} value={sort} onChange={(e) => update({ sort: e.target.value })}>
             {q && <option value="relevance">Relevance</option>}
             <option value="updated">Recently updated</option>
@@ -311,9 +318,14 @@ export default function Library({ projectId, header }: { projectId?: number; hea
             <button className="btn sm" title="Send to Blender" onClick={() => api.post("/api/deliveries", { app: "blender", asset_ids: [...selected] }).then(() => toast("Sent to Blender", "ok"))}><Icon name="blender" size={14} /></button>
             <button className="btn sm" title="Send to Unreal" onClick={() => api.post("/api/deliveries", { app: "unreal", asset_ids: [...selected] }).then(() => toast("Sent to Unreal", "ok"))}><Icon name="unreal" size={14} /></button>
             <button className="btn sm" onClick={() => bulk({ favorite: true }, "Marked as favorite")}><Icon name="star" size={14} /></button>
+            {localAi && (
+              <button className="btn sm" title="Add the on-device AI tag suggestions as real tags" onClick={() => api.post<{ added: number }>("/api/ai/accept-suggestions", { ids: [...selected] }).then((r) => { toast(`${r.added} suggested tags added`, "ok"); load(1); }).catch((e) => toast(e.message, "error"))}>
+                <Icon name="check" size={14} />Accept suggestions
+              </button>
+            )}
             {aiEnabled && (
-              <button className="btn sm" title="Categorize & tag with AI" onClick={() => api.post<{ jobs: number[] }>("/api/ai/tag", { ids: [...selected] }).then((r) => toast(`AI tagging queued for ${r.jobs.length} asset(s)`, "ok")).catch((e) => toast(e.message, "error"))}>
-                <Icon name="sparkle" size={14} />AI tag
+              <button className="btn sm" title="Categorize & tag with Claude (cloud)" onClick={() => api.post<{ jobs: number[] }>("/api/ai/tag", { ids: [...selected] }).then((r) => toast(`AI tagging queued for ${r.jobs.length} asset(s)`, "ok")).catch((e) => toast(e.message, "error"))}>
+                <Icon name="sparkle" size={14} />Claude tag
               </button>
             )}
             <button className="btn sm danger" onClick={() => confirm(`Remove ${selected.size} assets from the library? Files on disk are not touched.`) && bulk({ delete: true }, "Removed")}>

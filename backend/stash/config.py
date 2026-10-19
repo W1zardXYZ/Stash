@@ -49,6 +49,12 @@ class Settings:
     preview_texture_size: int = field(default_factory=lambda: int(_env("PREVIEW_TEXTURE_SIZE", "1024")))
     # Size cap for cached exports/packages in GB; oldest are evicted first (0 = unlimited)
     export_cache_gb: float = field(default_factory=lambda: float(_env("EXPORT_CACHE_GB", "10")))
+    # On-device AI (CLIP via ONNX Runtime): tag suggestions, semantic search, similar assets
+    local_ai: bool = field(default_factory=lambda: (_env("LOCAL_AI", "true") or "").lower() == "true")
+    clip_model: str = field(default_factory=lambda: _env("CLIP_MODEL", "ViT-B-32__openai") or "ViT-B-32__openai")
+    model_base_url: str = field(default_factory=lambda: (_env("MODEL_URL", "https://huggingface.co/immich-app") or "").rstrip("/"))
+    ai_threads: int = field(default_factory=lambda: int(_env("AI_THREADS", "2")))
+    ai_idle_unload: int = field(default_factory=lambda: int(_env("AI_IDLE_UNLOAD", "1800")))
     frontend_dir: Path = field(
         default_factory=lambda: Path(
             _env("FRONTEND_DIR", str(Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"))

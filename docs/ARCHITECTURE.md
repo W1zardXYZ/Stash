@@ -53,6 +53,18 @@ matches "wooden chair". Queries are prefix matches, `-word` excludes, `"phrase"`
   project packages expire after 7 days; a daily garbage collector deletes store files no row
   references (replaced thumbnails, removed assets).
 
+## On-device AI (`vision.py`)
+
+CLIP ViT-B-32 (OpenAI weights, ONNX exports published by Immich) in ONNX Runtime on the CPU.
+`embed_pending` jobs embed thumbnails (re-run when a thumbnail changes) into `asset_embeddings`
+(float16). Tag suggestions are zero-shot: the image embedding is compared to text embeddings of a
+fixed vocabulary per category (objects, materials, styles, colours, HDRI environments), with a
+softmax per category and per-kind category sets (no objects for material balls, nothing for
+normal/roughness maps); they're stored in `meta.auto_tags`, full-text indexed, and become real
+tags only when accepted. Smart search embeds the query text and ranks by cosine similarity
+against an in-memory matrix, boosted by ordinary full-text matches and cut at a window below the
+best score.
+
 ## Pipeline
 
 1. **scan_source** (`ingest/scanner.py`)

@@ -24,7 +24,8 @@ the existing projects I looked at and why this one is built from scratch.
 | **Organize** | Full-text search (names, tags, materials, bones, paths), facets by type/feature/source/Unreal class/tag, tags with colors & merge, ratings, favorites, notes, projects (collections) – all bulk-editable. |
 | **Convert & export** | Any asset to `.blend` (procedural materials intact), glTF/GLB, FBX (generic / Unreal / Unity presets), OBJ, USD/USDZ, STL, PLY, Alembic; texture format conversion; an **Unreal package** (FBX + textures + manifest the plugin turns into material instances) or **native `.uasset`** with its whole dependency closure. Whole projects export to one zip. |
 | **Into your DCC** | Blender add-on: browse/search in the N-panel, import (materials onto the selection, geo-nodes onto the active object, actions onto the active rig, HDRIs onto the world), push selections/files back. Unreal plugin: push Content Browser assets, import packages with auto-built material instances. Both can **receive** assets you click *Send to Blender/Unreal* on in the web UI. |
-| **AI cataloguing (optional)** | With an Anthropic API key on the server, *AI tag* (per asset or on a whole selection) has Claude look at the thumbnail and metadata and add a category, search tags and a one-line description – handy for thousands of untagged pack assets. |
+| **On-device AI** | A CLIP model running on the NAS's CPU (ONNX Runtime, nothing leaves your network) looks at every thumbnail: one-click **tag suggestions** (object, material, style, colour; environment for HDRIs), **Smart search** by description ("mossy stone wall", "something to sit on"), and **visually similar** assets. |
+| **Claude tagging (optional)** | With an Anthropic API key, *Claude tag* writes a category, tags and a description per asset – higher quality than the on-device model, but cloud and paid. |
 | **Housekeeping** | Pack facet (the asset pack each file came from), duplicate finder (same file in several places), missing-file tracking, scheduled rescans per source. |
 | **Blender add-ons** | Add-ons/extensions in your sources are catalogued, and Stash serves a **Blender extension repository** – add one URL in Blender's preferences and install your own add-on collection from it. |
 
@@ -72,7 +73,11 @@ tagging, Unreal parsing and original-file downloads work; `.blend` splitting and
 | `STASH_BLENDER_NICE` | `10` | CPU priority of Blender jobs (0–19, higher = gentler on the NAS) |
 | `STASH_BLENDER_THREADS` | `0` | Threads per Blender job (0 = all cores) |
 | `STASH_PUBLIC_URL` | – | External URL when behind a reverse proxy |
-| `ANTHROPIC_API_KEY` | – | Enables AI tagging (Claude) |
+| `STASH_LOCAL_AI` | `true` | On-device CLIP tagging/search (model downloaded once, ~600 MB, to `/data/models`) |
+| `STASH_CLIP_MODEL` | `ViT-B-32__openai` | Any CLIP model from [immich-app on Hugging Face](https://huggingface.co/immich-app) with ONNX exports |
+| `STASH_AI_THREADS` | `2` | CPU threads for the on-device model |
+| `STASH_AI_IDLE_UNLOAD` | `1800` | Seconds before an unused model is unloaded (~700 MB RAM); 0 = keep loaded |
+| `ANTHROPIC_API_KEY` | – | Enables Claude tagging (cloud) |
 | `STASH_AI_MODEL` | `claude-opus-5-5` | Model for AI tagging; `claude-haiku-5-5` is much cheaper for bulk runs |
 | `STASH_AI` | auto | `false` disables AI tagging even when a key is present |
 

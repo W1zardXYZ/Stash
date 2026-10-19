@@ -10,6 +10,7 @@ _TMP = tempfile.mkdtemp(prefix="stash_test_")
 os.environ["STASH_DATA_DIR"] = _TMP
 os.environ["STASH_WORKERS"] = "0"
 os.environ.setdefault("STASH_RENDER_THUMBNAILS", "false")
+os.environ.setdefault("STASH_LOCAL_AI", "false")  # the CLIP model is a 600 MB download; tests stub it
 if os.environ.get("STASH_TEST_BLENDER") != "1":
     os.environ["STASH_BLENDER"] = "none"
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

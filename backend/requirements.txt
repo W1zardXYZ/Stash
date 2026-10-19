@@ -6,3 +6,6 @@ pillow>=10.3
 python-multipart>=0.0.9
 zstandard>=0.22
 anthropic>=1.15
+numpy>=1.26
+onnxruntime>=1.18
+tokenizers>=0.19

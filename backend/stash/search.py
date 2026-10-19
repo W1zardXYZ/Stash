@@ -20,6 +20,9 @@ def _meta_text(asset: Asset) -> str:
         elif isinstance(v, list):
             for x in v[:100]:
                 parts.append(x.get("name", "") if isinstance(x, dict) else str(x))
+    for t in m.get("auto_tags") or []:
+        if isinstance(t, dict) and t.get("tag"):
+            parts.append(t["tag"])
     if asset.is_rigged:
         parts.append("rigged skeleton armature")
     if asset.is_animated:
