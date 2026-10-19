@@ -112,6 +112,9 @@ Fab assets reach you in one of three ways; Stash handles each:
 
 ## Development
 
+Quickest: `scripts/dev.sh setup && scripts/dev.sh test && scripts/dev.sh samples && scripts/dev.sh serve`
+(no Docker; macOS or Linux – see [docs/HANDOFF_MAC.md](docs/HANDOFF_MAC.md)). By hand:
+
 ```bash
 # backend (Python 3.11+)
 cd backend && pip install -r requirements.txt pytest httpx

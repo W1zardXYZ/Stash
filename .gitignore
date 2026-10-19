@@ -8,3 +8,5 @@ frontend/dist/
 *.blend1
 .venv/
 .env
+dev-data/
+dev-library/

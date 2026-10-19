@@ -24,6 +24,12 @@ def _find_blender() -> str | None:
     if opt.is_dir():
         for sub in sorted(opt.glob("blender-*/blender"), reverse=True):
             return str(sub)
+    # macOS: Blender.app, or versioned copies like "Blender 4.5.app" (newest name first)
+    for apps in (Path("/Applications"), Path.home() / "Applications"):
+        for app in sorted(apps.glob("Blender*.app"), reverse=True):
+            exe = app / "Contents" / "MacOS" / "Blender"
+            if exe.exists():
+                return str(exe)
     return None
 
 
