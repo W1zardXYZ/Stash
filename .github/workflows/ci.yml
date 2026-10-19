@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r backend/requirements.txt pytest httpx
+      - run: python -m pytest -q
+        working-directory: backend
+
+  blender-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r backend/requirements.txt pytest httpx
+      - name: Install Blender 4.5 LTS
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends libxi6 libxxf86vm1 libxfixes3 libxrender1 libxkbcommon0 libsm6 libgl1 libegl1
+          curl -fsSL https://download.blender.org/release/Blender4.5/blender-4.5.14-linux-x64.tar.xz | tar -xJ -C /opt
+      - run: python -m pytest -q tests/test_blender_pipeline.py
+        working-directory: backend
+        env:
+          STASH_TEST_BLENDER: "1"
+          STASH_BLENDER: /opt/blender-4.5.14-linux-x64/blender
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci && npm run build
+        working-directory: frontend
