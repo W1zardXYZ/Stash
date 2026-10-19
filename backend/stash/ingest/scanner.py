@@ -32,6 +32,7 @@ SKIP_DIRS = {
     "Binaries", ".vs", ".idea", "Build", "$RECYCLE.BIN", "@eaDir", "#recycle", ".Trash-1000", ".stfolder",
 }
 TEXTURE_DIR_NAMES = {"textures", "texture", "tex", "maps", "materials", "images", "sourceimages", "textures_4k", "textures_2k", "pbr"}
+GENERIC_SET_NAMES = {"default", "material", "mat", "texture", "tex", "untitled", "none", "lambert1", "initialshadinggroup", "base", "main"}
 PREVIEW_WORDS = ("preview", "thumb", "thumbnail", "render", "screenshot", "cover", "icon", "promo", "showcase")
 
 
@@ -388,6 +389,8 @@ class Scanner:
             first = next(iter(chans.values()))
             nice = next(iter(chans.values())).stem
             nice = split_texture_name(nice)[0] or base
+            if nice.lower() in GENERIC_SET_NAMES:
+                nice = gdir.name  # "Default_albedo.jpg" in DamagedHelmet/ -> "DamagedHelmet"
             folder_rel = self.rel(gdir, prefix)
             a = self.upsert(
                 f"{folder_rel}#{base}" if folder_rel not in (".", "") else f"#{base}",

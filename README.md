@@ -32,6 +32,11 @@ the existing projects I looked at and why this one is built from scratch.
 |---|---|---|---|
 | ![](docs/screenshots/anim.jpg) | ![](docs/screenshots/pbr.jpg) | ![](docs/screenshots/ue_lib.jpg) | ![](docs/screenshots/mat.jpg) |
 
+Real downloads (Khronos glTF samples, Poly Haven `.blend`/FBX/texture sets/HDRI) after one scan –
+textures relinked, rig animations playable, `.blend` split into model/material/textures:
+
+![Real assets](docs/screenshots/real_assets.jpg)
+
 ## Quick start (Docker / NAS)
 
 ```bash

@@ -595,7 +595,8 @@ def main():
     for ik, info in images_seen.items():
         img = info["img"]
         path, state = export_image(img, tex_dir)
-        entry = {"key": ik, "name": img.name, "kind": "texture", "channel": info["channel"], "state": state, "files": {}}
+        nice = os.path.splitext(img.name)[0] if os.path.splitext(img.name)[1].lower() in (".png", ".jpg", ".jpeg", ".exr", ".tga", ".tif", ".tiff", ".hdr", ".webp", ".bmp") else img.name
+        entry = {"key": ik, "name": nice, "kind": "texture", "channel": info["channel"], "state": state, "files": {}}
         try:
             entry["size"] = list(img.size)
         except Exception:

@@ -25,7 +25,11 @@ function viewerSource(a: AssetDetail, related: AssetDetail | null): ViewerSource
     if (Object.keys(maps).length) return { type: "pbr", maps };
   }
   if (a.kind === "animation" && !a.preview && related?.preview) return { type: "model", url: related.preview.url, format: "glb" };
-  if (a.preview) return { type: "model", url: a.preview.url, format: a.preview.format || "glb" };
+  if (a.preview) {
+    // a linked .gltf/.obj must load via the folder-relative route so its textures resolve
+    const url = a.preview.storage === "source" ? `/api/assets/${a.id}/raw/${encodeURIComponent(a.preview.name)}` : a.preview.url;
+    return { type: "model", url, format: a.preview.format || "glb" };
+  }
   const ueExport = a.files.find((f) => f.role === "ue_export");
   const model = ueExport ?? src;
   if (model && WEB_MODELS.has(model.format) && ["model", "skeletal_model", "animation", "scene", "unreal_asset"].includes(a.kind)) {
