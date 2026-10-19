@@ -16,6 +16,7 @@ from .config import settings
 from .convert.exporter import available_targets, export_asset
 from .db import session_scope
 from .images import make_thumbnail
+from .ingest.formats import kind_for_path
 from .ingest.scanner import scan_source
 from .jobs import JobContext, enqueue, handler
 from .models import Asset, AssetFile, AssetLink, Job, Project, Source, Tag
@@ -241,6 +242,14 @@ def job_extract_blend(ctx: JobContext):
 
 # ----------------------------------------------------------------------------- previews
 
+def preview_input(asset: Asset) -> AssetFile | None:
+    """The file Blender renders an asset's preview from: an FBX/glTF pushed from Unreal, else a source
+    Blender can import (never a .uasset), else a GLB pushed from Blender."""
+    ue_exp = next((f for f in asset.files if f.role == "ue_export"), None)
+    src = next((f for f in asset.files if f.role == "source" and kind_for_path(Path(f.name or f.path)) != "unreal"), None)
+    return ue_exp or src or asset.preview
+
+
 @handler("preview")
 def job_preview(ctx: JobContext):
     from .convert.exporter import linked, pbr_maps
@@ -249,20 +258,12 @@ def job_preview(ctx: JobContext):
         asset = db.get(Asset, ctx.asset_id)
         if asset is None:
             return {}
-        src = next((f for f in asset.files if f.role == "source"), None)
-        ue_exp = next((f for f in asset.files if f.role == "ue_export"), None)
-        # assets pushed from Blender may only carry a GLB preview: render from that
-        src = ue_exp or src or asset.preview
+        src = preview_input(asset)
         if src is None:
             return {}
         path = resolve(src)
-        pbr = None
-        if not any(f.role == "texture" for f in asset.files):
-            for m in linked(db, asset, "uses_material"):
-                maps = pbr_maps(m)
-                if maps:
-                    pbr = {**maps, "_name": m.name}
-                    break
+        # matched texture sets; Blender only uses them for slots without image textures of their own
+        pbr = [{**maps, "_name": m.name} for m in linked(db, asset, "uses_material") if (maps := pbr_maps(m))] or None
         texture_dirs = sorted({str(resolve(f).parent) for f in asset.files if f.role == "texture"})
         fingerprint = asset.fingerprint
     render_only = ctx.payload.get("render_only") or path.suffix.lower() in (".glb", ".gltf") and not pbr

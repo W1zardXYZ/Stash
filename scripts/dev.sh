@@ -162,6 +162,7 @@ cmd_smoke() {
   curl -fs "http://localhost:$PORT/api/status" >/dev/null || die "start the server first (scripts/dev.sh start)"
   "$VENV/bin/python" - "$PORT" "$LIB" <<'EOF'
 import json, sys, time, urllib.request, urllib.parse
+from datetime import datetime, timezone
 port, lib = sys.argv[1], sys.argv[2]
 base = f"http://localhost:{port}/api"
 def call(method, path, body=None):
@@ -175,6 +176,7 @@ def check(name, cond, detail=""):
     ok &= bool(cond)
     print(("PASS " if cond else "FAIL ") + name + (f": {detail}" if detail else ""))
 src = next((s for s in call("GET", "/sources") if s["path"] == lib), None) or call("POST", "/sources", {"path": lib, "name": "Dev samples"})
+started = datetime.now(timezone.utc)
 call("POST", f"/sources/{src['id']}/scan")
 t0 = time.time()
 while True:
@@ -183,7 +185,8 @@ while True:
         break
     time.sleep(3)
 print(f"jobs settled after {time.time() - t0:.0f}s: {st['jobs']}")
-errors = call("GET", "/jobs?status=error&limit=50")["items"]
+# only this run's jobs: other sources (or older runs) may have failures of their own
+errors = [j for j in call("GET", "/jobs?status=error&limit=200")["items"] if datetime.fromisoformat(j["created_at"]) >= started]
 check("no failed jobs", not errors, "; ".join(f"{j['type']}: {j['message'][:120]}" for j in errors))
 assets = call("GET", f"/assets?source={src['id']}&per_page=500")["items"]
 items = {a["name"]: a for a in assets}  # names repeat (a .blend's object and material); use `assets` to scan all
@@ -199,6 +202,8 @@ if st.get("blender"):
     check("thumbnails", len(with_thumb) >= len(assets) // 2, f"{len(with_thumb)}/{len(assets)}")
     target = next((a for a in assets if a["kind"] == "model" and a["parent_id"]), fox)
     job = call("POST", f"/assets/{target['id']}/export", {"target": "glb"})
+    if "file" in job:  # served from the export cache
+        job = {"file_id": job["file"]["id"], "name": job["file"]["name"], "size": job["file"]["size"]}
     while "job_id" in job:
         j = call("GET", f"/jobs/{job['job_id']}")
         if j["status"] in ("done", "error", "cancelled"):

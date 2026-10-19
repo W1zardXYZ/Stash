@@ -135,13 +135,10 @@ def _input_for(db: Session, asset: Asset) -> dict:
     spec: dict = {"input": str(p), "search_dirs": [str(p.parent), str(p.parent.parent)]}
     if asset.kind == "scene" and asset.parent_id is None:
         return spec
-    # models: bring along a matched PBR set when the model doesn't reference textures itself
-    if not files_by_role(asset, "texture"):
-        for m in linked(db, asset, "uses_material"):
-            maps = pbr_maps(m)
-            if maps:
-                spec["pbr"] = {**maps, "_name": m.name}
-                break
+    # models: bring along matched PBR sets; Blender only uses them for slots without image textures
+    sets = [{**maps, "_name": m.name} for m in linked(db, asset, "uses_material") if (maps := pbr_maps(m))]
+    if sets:
+        spec["pbr"] = sets
     return spec
 
 

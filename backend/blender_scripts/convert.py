@@ -7,7 +7,8 @@ Options:
   --objects A,B           (when input is .blend) only keep these objects (+children/armatures)
   --collection NAME       (when input is .blend) only keep objects of that collection
   --search-dir DIR        repeatable; folders used to relink missing textures
-  --pbr JSON              {"base_color": path, "normal": path, ...}: build/assign a PBR material
+  --pbr JSON              {"base_color": path, "normal": path, ..., "_name": name}, or a list of those:
+                          build PBR materials for slots without image textures (see apply_pbr_sets)
   --material-only         with --pbr: output a preview sphere using that material
   --scale F               uniform scale applied before export
   --append-blend FILE:Type:Name   append a datablock (used for Blender-native material/action assets)
@@ -15,6 +16,7 @@ Options:
 
 import json
 import os
+import re
 import sys
 import traceback
 
@@ -121,6 +123,35 @@ def relink_textures(dirs):
                 bpy.ops.file.find_missing_files(directory=d, find_all=True)
             except Exception as e:
                 print("find_missing_files failed:", e)
+
+
+def apply_pbr_sets(sets):
+    """Give mesh slots without image textures a PBR material. With several sets (a mesh textured in
+    Substance Painter: SM_Arco_LP_lambert1, SM_Arco_LP_lambert2) each slot gets the set named after it
+    ("lambert1"), otherwise the first set."""
+    if isinstance(sets, dict):
+        sets = [sets]
+    built = {}
+
+    def mat(i):
+        if i not in built:
+            built[i] = build_pbr_material(sets[i].get("_name", "StashMaterial"), sets[i])
+        return built[i]
+
+    def for_slot(m):
+        slot = re.sub(r"\.\d{3}$", "", m.name).lower() if m is not None else ""
+        return next((i for i, s in enumerate(sets) if slot and s.get("_name", "").lower().endswith("_" + slot)), 0)
+
+    for ob in bpy.data.objects:
+        if ob.type != "MESH":
+            continue
+        slots = ob.data.materials
+        if len(slots) == 0:
+            slots.append(mat(0))
+            continue
+        for i, m in enumerate(slots):
+            if m is None or not any(n.bl_idname == "ShaderNodeTexImage" for n in (m.node_tree.nodes if m.use_nodes else [])):
+                slots[i] = mat(for_slot(m))
 
 
 def build_pbr_material(name, maps):
@@ -305,19 +336,10 @@ def main():
     relink_textures(o["search_dirs"] + ([os.path.dirname(inp)] if inp else []))
 
     if o["pbr"]:
-        mat = build_pbr_material(o["pbr"].get("_name", "StashMaterial"), o["pbr"])
         if o["material_only"]:
-            preview_sphere(mat)
+            preview_sphere(build_pbr_material(o["pbr"].get("_name", "StashMaterial"), o["pbr"]))
         else:
-            for ob in bpy.data.objects:
-                if ob.type == "MESH":
-                    slots = ob.data.materials
-                    if len(slots) == 0:
-                        slots.append(mat)
-                    else:
-                        for i, m in enumerate(slots):
-                            if m is None or not any(n.bl_idname == "ShaderNodeTexImage" for n in (m.node_tree.nodes if m.use_nodes else [])):
-                                slots[i] = mat
+            apply_pbr_sets(o["pbr"])
 
     if o["scale"] != 1.0:
         for ob in bpy.data.objects:

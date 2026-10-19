@@ -14,7 +14,7 @@ import bpy
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import stash_common as sc  # noqa: E402
-from convert import build_pbr_material, import_file, relink_textures  # noqa: E402
+from convert import apply_pbr_sets, import_file, relink_textures  # noqa: E402
 
 
 def parse():
@@ -66,16 +66,7 @@ def main():
         import_file(inp)
     relink_textures(o["search_dirs"] + [os.path.dirname(inp)])
     if o["pbr"]:
-        mat = build_pbr_material(o["pbr"].get("_name", "StashMaterial"), o["pbr"])
-        for ob in bpy.data.objects:
-            if ob.type == "MESH":
-                mats = ob.data.materials
-                if len(mats) == 0:
-                    mats.append(mat)
-                else:
-                    for i, m in enumerate(mats):
-                        if m is None or not (m.use_nodes and any(n.bl_idname == "ShaderNodeTexImage" for n in m.node_tree.nodes)):
-                            mats[i] = mat
+        apply_pbr_sets(o["pbr"])
     scene = bpy.context.scene
     # skip bone custom-shape helpers (the glTF importer adds an "Icosphere") and hidden objects
     shapes = {pb.custom_shape for ob in scene.objects if ob.type == "ARMATURE" for pb in ob.pose.bones if pb.custom_shape}

@@ -50,6 +50,9 @@ class Scanner:
         self.followups: list[tuple[str, int, dict]] = []  # (job type, asset id, payload)
         self.counts: dict[str, int] = defaultdict(int)
         self._asset_cache: dict[tuple[str, str], Asset] = {}
+        # packs are the top-level folders below this source_path prefix ("" = the source root;
+        # "Content/" while loose files of an Unreal project are scanned)
+        self.pack_base = ""
 
     # ------------------------------------------------------------------ helpers
     def checkpoint(self):
@@ -94,7 +97,8 @@ class Scanner:
             else:
                 setattr(a, k, v)
         if "pack" not in (a.meta or {}):
-            a.meta = {**(a.meta or {}), "pack": _pack_for(source_path)}
+            below = source_path[len(self.pack_base):] if source_path.startswith(self.pack_base) else source_path
+            a.meta = {**(a.meta or {}), "pack": _pack_for(below)}
         a.seen_at = self.scan_started
         a.status = "ok"
         self._asset_cache[key] = a
@@ -425,6 +429,14 @@ class Scanner:
             for f in sa.files:
                 if f.role == "texture":
                     set_by_file[f.path] = sa
+        # Substance Painter's default export names a set "<mesh>_<texture set>" (SM_Arco_LP_lambert1_BaseColor):
+        # it belongs to the model with the longest matching name, so SM_Arco doesn't take SM_Arco_LP's sets
+        model_names = {m.stem.lower() for _, m, _ in model_assets}
+
+        def owner_of(base_l: str) -> str | None:
+            parts = base_l.split("_")
+            return next((o for k in range(len(parts) - 1, 0, -1) if (o := "_".join(parts[:k])) in model_names), None)
+
         for a, m, info in model_assets:
             d = _anchor_dir(m.parent)
             stem = re.sub(r"^(sm|sk|skm|s)_", "", m.stem.lower())
@@ -439,7 +451,7 @@ class Scanner:
             for gdir, base, sa in candidates:
                 base_l = re.sub(r"^t_", "", base.lower())
                 # SM_Rock_01 <-> T_Rock_01_*, SM_Chair_LOD0 <-> T_Chair_*; but not Rock_01 <-> Rock_02
-                related = bool(base_l) and (base_l in (stem, stem_core) or stem.startswith(base_l + "_"))
+                related = bool(base_l) and (base_l in (stem, stem_core) or stem.startswith(base_l + "_") or owner_of(base_l) == m.stem.lower())
                 if related or (lone_model and len(sets_at[gdir]) <= 3):
                     linked[id(sa)] = sa
             for sa in linked.values():
@@ -792,6 +804,30 @@ class Scanner:
                             self.link(a, mesh, "animates")
         for a, _ in parsed:
             index_asset(self.db, a)
+        self._scan_loose_content(content, mount, by_package, prefix)
+
+    def _scan_loose_content(self, content: Path, mount: str, by_package: dict[str, Asset], prefix: str = ""):
+        """Source files shipped next to the packages (Fab packs often include FBX + textures):
+        indexed like a normal folder - they have real geometry Stash can preview and convert -
+        and linked to the package of the same name."""
+        loose = [
+            p for p in content.rglob("*")
+            if p.is_file() and kind_for_path(p) not in (None, "unreal")
+            and not any(s in SKIP_DIRS or s.startswith(".") for s in p.relative_to(content).parts)
+        ]
+        if not loose:
+            return
+        self.log(f"Unreal content {content}: {len(loose)} loose source files")
+        self.pack_base = self.rel(content, prefix) + "/"
+        try:
+            self.scan_folder_files(loose, content, prefix)
+        finally:
+            self.pack_base = ""
+        for f in loose:
+            a = self._asset_cache.get((self.rel(f, prefix), ""))
+            pkg = by_package.get(package_path_for(f.with_suffix(".uasset"), content, mount))
+            if a is not None and pkg is not None:
+                self.link(a, pkg, "source_of")
 
 
 MODEL_DIR_NAMES = {"meshes", "mesh", "models", "model", "fbx", "obj", "gltf", "glb", "geometry", "static", "staticmeshes", "skeletal", "skeletalmeshes", "source", "sourcefiles"}

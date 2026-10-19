@@ -17,7 +17,7 @@ from ..db import get_db
 from ..images import PIL_FORMATS, normalize_thumbnail, scaled_jpeg
 from ..jobs import enqueue
 from ..models import Asset, AssetFile, AssetLink, Job, Pack, Project, ProjectAsset, Source, Tag, asset_tags
-from ..processing import PRIORITY, queue_embeddings
+from ..processing import PRIORITY, preview_input, queue_embeddings
 from ..search import index_asset, ranked_subquery, unindex_asset
 from ..storage import resolve, store_bytes
 from .common import ser_asset_brief, ser_file, ser_job
@@ -520,7 +520,7 @@ def reprocess(asset_id: int, db: Session = Depends(get_db)):
         jobs.append(enqueue("extract_blend", {}, asset_id=a.id, priority=PRIORITY["extract_blend"] + 5))
     elif a.kind in ("texture", "hdri") or (a.kind == "material" and a.format == "pbr"):
         jobs.append(enqueue("thumbnail", {}, asset_id=a.id, priority=PRIORITY["thumbnail"]))
-    elif any(f.role in ("source", "ue_export") for f in a.files) and a.kind in ("model", "skeletal_model", "animation", "scene"):
+    elif preview_input(a) is not None and a.kind in ("model", "skeletal_model", "animation", "scene"):
         jobs.append(enqueue("preview", {}, asset_id=a.id, priority=PRIORITY["preview"] + 5))
     return {"jobs": jobs}
 

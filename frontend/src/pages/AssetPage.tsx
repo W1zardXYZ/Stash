@@ -12,6 +12,7 @@ const RELATION_LABEL: Record<string, [string, string]> = {
   uses_skeleton: ["Skeleton", "Meshes on this skeleton"],
   animates: ["Animates", "Animations"],
   depends_on: ["Depends on", "Referenced by"],
+  source_of: ["Source of", "Source files"],
 };
 const WEB_IMAGES = /\.(png|jpe?g|webp|gif|bmp|svg)$/i;
 const WEB_MODELS = new Set(["glb", "gltf", "fbx", "obj", "stl", "ply", "dae", "3mf", "usdz"]);

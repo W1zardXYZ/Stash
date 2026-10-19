@@ -15,6 +15,11 @@ pytestmark = pytest.mark.skipif(os.environ.get("STASH_TEST_BLENDER") != "1", rea
 FIXTURES = Path(__file__).parent / "fixtures" / "make_fixtures.py"
 
 
+def _glb_json(data: bytes) -> dict:
+    n = int.from_bytes(data[12:16], "little")
+    return json.loads(data[20 : 20 + n])
+
+
 def test_blend_extraction_and_exports(app_client, run_jobs, tmp_path):
     from stash.config import settings
 
@@ -52,6 +57,8 @@ def test_blend_extraction_and_exports(app_client, run_jobs, tmp_path):
         # a material split from a .blend carries its textures through links, not files of its own
         (items[("CrateMat", "material")], "unreal", lambda d: any(m["maps"] for m in json.loads(zipfile.ZipFile(io.BytesIO(d)).read("CrateMat/stash_manifest.json"))["materials"])),
         # EXR is decoded by Blender, then written in the requested format at its own size
+        # one Painter texture set per material slot, not the first set everywhere
+        (items[("SM_Arch_LP", "model")], "glb", lambda d: {"SM_Arch_LP_lambert1", "SM_Arch_LP_lambert2"} <= {m["name"] for m in _glb_json(d)["materials"]}),
         # the glTF importer's bone-shape helper ("Icosphere") must not come along
         (next(a for a in c.get("/api/assets", params={"source": src["id"], "q": "worm", "per_page": 50}).json()["items"] if a["format"] == "glb"), "fbx", lambda d: d.startswith(b"Kaydara FBX Binary") and b"Icosphere" not in d),
         (next(a for (n, _), a in items.items() if n == "sky"), "jpg", lambda d: Image.open(io.BytesIO(d)).format == "JPEG" and Image.open(io.BytesIO(d)).size == (64, 32)),

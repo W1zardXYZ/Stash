@@ -217,6 +217,7 @@ def inspect_fbx(path: Path) -> dict[str, Any]:
     bones = 0
     skins = 0
     blendshapes = 0
+    curves = 0
     models = []
     for n in objects.children:
         if n.name == "Geometry" and len(n.props) >= 3 and n.props[2] == "Mesh":
@@ -258,6 +259,10 @@ def inspect_fbx(path: Path) -> dict[str, Any]:
                         except (TypeError, ValueError):
                             pass
             res["animations"].append({"name": name, "duration": round(dur, 3)})
+        elif n.name == "AnimationCurve":
+            curves += 1
+    if not curves:
+        res["animations"] = []  # the default take Maya/Max/Blender write into static files ("Take 001")
     # de-duplicate texture paths (Texture and Video nodes both reference the file)
     seen = set()
     res["textures"] = [t for t in res["textures"] if not (t in seen or seen.add(t))]
@@ -280,6 +285,8 @@ def inspect_fbx_ascii(text: str) -> dict[str, Any]:
     res["materials"] = [m.split("::")[-1] for m in re.findall(r'Material:\s*\d+,\s*"([^"]*)"', text)]
     res["textures"] = sorted(set(re.findall(r'RelativeFilename:\s*"([^"]+)"', text)))
     res["animations"] = [{"name": a.split("::")[-1], "duration": 0} for a in re.findall(r'AnimationStack:\s*\d+,\s*"([^"]*)"', text)]
+    if not re.search(r"AnimationCurve:\s*\d+", text):
+        res["animations"] = []  # only the default take of a static file
     return res
 
 

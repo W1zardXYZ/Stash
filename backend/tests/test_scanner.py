@@ -76,3 +76,54 @@ def test_blend_render_beats_embedded_preview(app_client, run_jobs, tmp_path, mon
     app_client.post(f"/api/sources/{src['id']}/scan")
     run_jobs()
     assert app_client.get(f"/api/assets/{parent_id}").json()["thumbnail"] == rendered
+
+
+def test_unreal_project_loose_source_files(app_client, run_jobs, tmp_path):
+    """Fab packs ship FBX/textures next to the packages: indexed like a folder, linked to their package."""
+    proj = tmp_path / "Stylized Project"
+    (proj / "Stylized.uproject").parent.mkdir(parents=True)
+    (proj / "Stylized.uproject").write_text('{"EngineAssociation": "5.8"}')
+    meshes = proj / "Content" / "ParisStreet" / "Meshes"
+    meshes.mkdir(parents=True)
+    (meshes / "SM_Lamp.uasset").write_bytes(b"\0" * 64)  # unreadable header -> class from the SM_ prefix
+    write_obj(meshes / "SM_Lamp.obj")
+    write_obj(meshes / "SM_Bench.obj")
+    for ch in ("BaseColor", "Normal"):
+        write_png(proj / "Content" / "ParisStreet" / "Textures" / f"T_Wall_{ch}.png")
+    write_obj(proj / "Saved" / "Autosaves" / "SM_Junk.obj")  # editor folders stay ignored
+
+    src = app_client.post("/api/sources", json={"path": str(proj)}).json()
+    run_jobs()
+    items = app_client.get("/api/assets", params={"source": src["id"], "per_page": 100}).json()["items"]
+    by = {(a["name"], a["format"]): a for a in items}
+    assert ("SM_Junk", "obj") not in by
+    lamp_obj, lamp_pkg, bench = by[("SM_Lamp", "obj")], by[("SM_Lamp", "uasset")], by[("SM_Bench", "obj")]
+    assert lamp_obj["kind"] == bench["kind"] == "model"
+    assert any(a["kind"] == "material" and a["format"] == "pbr" for a in items)  # T_Wall_* became a set
+    for a in (lamp_obj, lamp_pkg, bench):
+        assert app_client.get(f"/api/assets/{a['id']}").json()["pack"]["name"] == "ParisStreet"
+    links = app_client.get(f"/api/assets/{lamp_obj['id']}").json()["links"]
+    assert [(l["relation"], l["direction"], l["asset"]["id"]) for l in links if l["relation"] == "source_of"] == [("source_of", "out", lamp_pkg["id"])]
+    assert not [l for l in app_client.get(f"/api/assets/{bench['id']}").json()["links"] if l["relation"] == "source_of"]
+    # "Re-extract" only re-renders what Blender can read: the two OBJ files, not the .uasset
+    assert app_client.post(f"/api/sources/{src['id']}/extract-all").json()["jobs"] == 2
+    assert app_client.post(f"/api/assets/{lamp_pkg['id']}/reprocess").json()["jobs"] == []
+
+
+def test_substance_painter_texture_sets(app_client, run_jobs, tmp_path):
+    """Painter's default export "<mesh>_<texture set>_<channel>.<udim>" belongs to the longest matching mesh."""
+    pack = tmp_path / "Street"
+    write_obj(pack / "Meshes" / "SM_Arch_LP.obj")
+    write_obj(pack / "Meshes" / "SM_Arch.obj")
+    for ts in ("lambert1", "lambert2"):
+        for ch in ("BaseColor", "Normal", "OcclusionRoughnessMetallic"):
+            write_png(pack / "Textures" / f"SM_Arch_LP_{ts}_{ch}.1001.png")
+    src = app_client.post("/api/sources", json={"path": str(tmp_path)}).json()
+    run_jobs()
+    items = {a["name"]: a for a in app_client.get("/api/assets", params={"source": src["id"], "per_page": 100}).json()["items"]}
+
+    def mats(name):
+        return sorted(l["asset"]["name"] for l in app_client.get(f"/api/assets/{items[name]['id']}").json()["links"] if l["relation"] == "uses_material")
+
+    assert len(mats("SM_Arch_LP")) == 2, mats("SM_Arch_LP")
+    assert mats("SM_Arch") == []

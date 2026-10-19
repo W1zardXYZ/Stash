@@ -18,7 +18,7 @@ from ..config import settings
 from ..db import get_db
 from ..jobs import enqueue
 from ..models import Asset, Job, Project, ProjectAsset, Source, Tag, asset_tags
-from ..processing import PRIORITY
+from ..processing import PRIORITY, preview_input
 from ..search import index_asset, reindex_all
 from ..ai import enabled as ai_enabled
 from .common import auth_enabled, ser_asset_brief, ser_job, ser_source
@@ -211,7 +211,7 @@ def extract_all(source_id: int, db: Session = Depends(get_db)):
     for a in db.query(Asset).filter(Asset.source_id == source_id, Asset.parent_id.is_(None)):
         if a.format == "blend":
             ids.append(enqueue("extract_blend", {}, asset_id=a.id, priority=PRIORITY["extract_blend"]))
-        elif a.kind in ("model", "skeletal_model") and any(f.role == "source" for f in a.files):
+        elif a.kind in ("model", "skeletal_model") and preview_input(a) is not None:
             ids.append(enqueue("preview", {}, asset_id=a.id, priority=PRIORITY["preview"]))
     return {"jobs": len(ids)}
 

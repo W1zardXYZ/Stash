@@ -118,7 +118,7 @@ def convert(
     fmt: str,
     objects: list[str] | None = None,
     search_dirs: list[str] | None = None,
-    pbr: dict | None = None,
+    pbr: dict | list[dict] | None = None,
     material_only: bool = False,
     append: list[str] | None = None,
     should_cancel=None,

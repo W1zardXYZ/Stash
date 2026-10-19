@@ -27,3 +27,13 @@ def test_broken_file_is_reported_not_raised(tmp_path):
     p = tmp_path / "broken.glb"
     p.write_bytes(b"not a glb")
     assert "inspect_error" in inspect_file(p)
+
+
+def test_fbx_default_take_is_not_an_animation():
+    """Static FBX from Maya/Blender carry an empty "Take 001" stack: only stacks with curves count."""
+    from stash.ingest.inspect import inspect_fbx_ascii
+
+    static = 'Objects:  {\n  Geometry: 1, "Geometry::", "Mesh" {}\n  AnimationStack: 2, "AnimStack::Take 001", "" {}\n}\n'
+    animated = static + '  AnimationCurve: 3, "AnimCurve::", "" {}\n'
+    assert inspect_fbx_ascii(static)["animations"] == []
+    assert [a["name"] for a in inspect_fbx_ascii(animated)["animations"]] == ["Take 001"]

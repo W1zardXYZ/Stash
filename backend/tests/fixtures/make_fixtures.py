@@ -8,6 +8,8 @@ Creates:
   crate.obj (+ .mtl)  textured OBJ
   textures/Crate_*    a tiny PBR texture set
   hdri/sky.exr        a tiny float image (Pillow can't read EXR, so exports go through Blender)
+  Painted/Meshes/SM_Arch_LP.fbx + Painted/Textures/SM_Arch_LP_<slot>_*.png
+                      two material slots textured Substance-Painter style (one set per slot)
 """
 
 import math
@@ -175,4 +177,20 @@ for o in bpy.context.view_layer.objects:
     o.select_set(o.name == "Crate")
 bpy.ops.wm.obj_export(filepath=os.path.join(out, "crate.obj"), export_selected_objects=True, path_mode="RELATIVE")
 bpy.ops.wm.stl_export(filepath=os.path.join(out, "cube.stl"), export_selected_objects=True)
+
+# --- two-slot mesh with Painter-style texture sets, alone in the scene
+bpy.ops.wm.read_factory_settings(use_empty=True)
+bpy.ops.mesh.primitive_cube_add(size=1)
+arch = bpy.context.active_object
+arch.name = "SM_Arch_LP"
+for slot in ("lambert1", "lambert2"):
+    arch.data.materials.append(bpy.data.materials.new(slot))
+for i, poly in enumerate(arch.data.polygons):
+    poly.material_index = i % 2
+os.makedirs(os.path.join(out, "Painted", "Meshes"), exist_ok=True)
+os.makedirs(os.path.join(out, "Painted", "Textures"), exist_ok=True)
+bpy.ops.export_scene.fbx(filepath=os.path.join(out, "Painted", "Meshes", "SM_Arch_LP.fbx"), use_selection=False)
+for slot, color in (("lambert1", (0.8, 0.1, 0.1)), ("lambert2", (0.1, 0.1, 0.8))):
+    make_image(f"{slot}_bc", color, os.path.join(out, "Painted", "Textures", f"SM_Arch_LP_{slot}_BaseColor.1001.png"))
+    make_image(f"{slot}_n", (0.5, 0.5, 1.0), os.path.join(out, "Painted", "Textures", f"SM_Arch_LP_{slot}_Normal.1001.png"))
 print("fixtures written to", out)
