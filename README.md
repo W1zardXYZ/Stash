@@ -125,6 +125,8 @@ blender -b --factory-startup --python backend/tests/fixtures/make_fixtures.py --
 ```
 
 Architecture, data model and pipeline details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Full codebase tour – where every piece of data lives and how it is read and written:
+[docs/OVERVIEW.md](docs/OVERVIEW.md).
 
 ## Status & limits
 
