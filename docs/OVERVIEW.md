@@ -87,6 +87,7 @@ sources 1──n assets 1──n asset_files
                 ├── n──m projects        (project_assets, with note)
                 ├── parent_id → assets   (container → contents, e.g. .blend → objects)
                 └── asset_links          (typed graph between assets)
+packs       (description + keywords per pack name; assets point at it via meta.pack)
 jobs        (queue; optional asset_id / source_id)
 deliveries  ("Send to Blender/Unreal" inbox)
 asset_fts   (FTS5 virtual table, rowid = assets.id)
@@ -100,10 +101,11 @@ asset_fts   (FTS5 virtual table, rowid = assets.id)
 | **asset_links** | `from_id` · `to_id` · `relation` | `uses_material`, `uses_texture`, `uses_skeleton`, `animates`, `depends_on`. |
 | **tags / asset_tags** | `name` (lower-case, unique) · `color` | |
 | **projects / project_assets** | `name` · `description` · `color` · `note` | Your collections ("Game A"). |
+| **packs** | `name` (unique) · `description` · `keywords` JSON · `meta` JSON (`by`: user/lmstudio/clip, `model`) | Only exists once a pack is described. Assets name their pack in `meta.pack`; the pack's description + keywords are added to each of its assets' `extra` search text. |
 | **jobs** | `type` · `status` queued/running/done/error/cancelled · `priority` · `progress` · `message` · `payload` · `result` · `log` · `dedupe_key` | The queue *and* its history. |
 | **deliveries** | `app` blender/unreal · `asset_id` · `target` · `status` pending/delivered/failed | Polled by the plugins. |
 | **asset_embeddings** | `asset_id` (PK) · `model` · `vector` (float16 bytes) · `source_sha` | `source_sha` = SHA of the thumbnail it came from; a new thumbnail → re-embed. |
-| **asset_fts** | `name`, `tags`, `kind`, `path`, `description`, `extra` | Rebuilt per asset by `search.index_asset`. `extra` holds Unreal class, materials, animations, channels, pack, category, AI suggestions… |
+| **asset_fts** | `name`, `tags`, `kind`, `path`, `description`, `extra` | Rebuilt per asset by `search.index_asset`. `extra` holds Unreal class, materials, animations, channels, pack name + pack description/keywords, category, AI suggestions… |
 
 Tables are created by `Base.metadata.create_all` on start-up (no migration tool yet – new
 columns need a migration step before the schema changes in a released version).
@@ -165,13 +167,14 @@ Auth: if `STASH_PASSWORD`/`STASH_API_TOKEN` is set, every endpoint except `/api/
 |---|---|
 | Browse | `GET /assets` (filters: `q`, `semantic`, `kind`, `tags`, `flags` rigged/animated/procedural/textured/favorite/untagged/duplicate/previewable, `source`, `project`, `pack`, `format`, `ue_class`, `parent=root\|<id>`, `status`, `sort`, `order`, `page`, `per_page`) · `GET /facets` · `GET /assets/{id}` (files, links, children, projects, export targets, recent jobs) · `GET /assets/{id}/similar` |
 | Edit | `PATCH /assets/{id}` (name, description, rating, favorite, kind) · `POST /assets/{id}/tags` · `DELETE /assets/{id}/tags/{name}` · `POST /assets/bulk` (tags, project, favorite, kind, delete) · `DELETE /assets/{id}` (forget; rescans skip it) · `POST /assets/{id}/thumbnail` (data URL from the viewer) · `POST /assets/{id}/thumbnail/{file_id}` |
-| Files | `GET /files/{id}[/{name}]` (`?download=1` for attachment) · `GET /assets/{id}/raw/{relative path}` (serves files next to a linked source so `.gltf`/`.obj`/`.fbx` find their textures) |
+| Packs | `GET /packs` (`described=true\|false`, `q`, `source`) · `GET /packs/{name}` (counts per kind/format, folders, names, tags, aggregated CLIP tags, sample assets, gallery images) · `PUT /packs/{name} {description, keywords, meta}` (re-indexes the pack's assets) · `DELETE /packs/{name}` |
+| Files | `GET /files/{id}[/{name}]` (`?download=1` for attachment, `?max=512` for a scaled JPEG of an image) · `GET /assets/{id}/raw/{relative path}` (serves files next to a linked source so `.gltf`/`.obj`/`.fbx` find their textures) |
 | Convert | `POST /assets/{id}/export {target, force}` → cached file or `job_id` · `POST /assets/{id}/reprocess` |
 | AI | `POST /ai/accept-suggestions {ids, min_score}` (on-device) · `POST /ai/tag {ids}` (Claude) |
 | Library | `GET/POST /sources` · `PATCH/DELETE /sources/{id}` · `POST /sources/{id}/scan` · `POST /sources/{id}/extract-all` · `GET /fs?path=` (folder picker, limited to `STASH_BROWSE_ROOTS`) · `POST /upload` |
 | Organise | `GET /tags` · `PATCH /tags/{id}` (rename, colour, `merge_into`) · `DELETE /tags/{id}` · `GET/POST /projects` · `GET/PATCH/DELETE /projects/{id}` · `POST /projects/{id}/assets` · `DELETE /projects/{id}/assets/{asset_id}` · `POST /projects/{id}/package {target}` |
 | Jobs | `GET /jobs` · `GET /jobs/{id}` (with log) · `GET /jobs/{id}/download` · `POST /jobs/{id}/cancel` · `POST /jobs/{id}/retry` · `DELETE /jobs` (clear finished) |
-| Plugins | `POST /ingest/bundle` (zip with `manifest.json`) · `POST/GET /deliveries` · `POST /deliveries/{id}/ack` · `DELETE /deliveries` · `GET /integrations/blender-addon.zip` · `GET /integrations/unreal-plugin.zip` · `GET /blender/extensions/index.json` |
+| Plugins | `POST /ingest/bundle` (zip with `manifest.json`) · `POST/GET /deliveries` · `POST /deliveries/{id}/ack` · `DELETE /deliveries` · `GET /integrations/blender-addon.zip` · `GET /integrations/unreal-plugin.zip` · `GET /integrations/stash_describe.py` · `GET /blender/extensions/index.json` |
 | Server | `GET /status` · `GET /status/blender` · `GET /maintenance/storage` · `POST /maintenance/cleanup` · `POST /maintenance/reindex` |
 
 Export targets per asset are listed in `GET /assets/{id}` → `targets`: `original`, `blend`,
@@ -187,7 +190,8 @@ for textures.
 | Blender add-on (`stash_bridge/client.py`) | `/assets` search, `/assets/{id}`, `/export` → `/jobs/{id}` → `/files/{id}`, `/deliveries?app=blender` | `/ingest/bundle` (push selection), `/upload` (push .blend), `/deliveries/{id}/ack` |
 | Unreal plugin (`stash_unreal/client.py`, same file) | same pattern with `app=unreal` | `/ingest/bundle` (push Content Browser selection) |
 | Blender's extension system | `/blender/extensions/index.json`, `/files/{id}` | – |
-| Your own scripts (e.g. a batch tagger) | `/assets?…&per_page=500`, thumbnails via `/files/{thumbnail id}` | `PATCH /assets/{id}`, `POST /assets/{id}/tags`, `/assets/bulk` |
+| `stash_describe.py` (LM Studio batch, [BATCH.md](BATCH.md)) | `/packs?described=false`, `/packs/{name}`, images via `/files/{id}?max=512`; `assets` mode: `/assets?…`, `/assets/{id}` | `PUT /packs/{name}`; `PATCH /assets/{id}`, `POST /assets/{id}/tags` |
+| Your own scripts | `/assets?…&per_page=500`, thumbnails via `/files/{thumbnail id}` | `PATCH /assets/{id}`, `POST /assets/{id}/tags`, `/assets/bulk` |
 
 ---
 
@@ -293,7 +297,8 @@ text; similar-assets uses nearest neighbours of the asset's vector.
 | `convert/exporter.py` | Export targets and packaging |
 | `api/assets.py` | Browse, edit, tags, bulk, files, exports, smart search, similar |
 | `api/library.py` | Status, sources, folder picker, uploads, tags, projects, jobs, maintenance |
-| `api/integrations.py` | Bundles, deliveries, Blender extension repository, plugin downloads |
+| `api/packs.py` | Pack list/summary/description |
+| `api/integrations.py` | Bundles, deliveries, Blender extension repository, plugin + script downloads |
 | `api/common.py` | Auth check, serializers |
 
 ### Blender scripts (`backend/blender_scripts/`, run inside Blender)
@@ -307,7 +312,7 @@ serialization, framing/lighting/rendering, texture externalizing/downscaling).
 `main.tsx` (shell, routes, drag-and-drop upload, login gate) · `api.ts` (typed client, labels)
 · `pages/Library.tsx` (facets, grid, Smart search, bulk actions) · `pages/AssetPage.tsx`
 (viewer, details, suggestions, related/similar, files, node graph, export/send) ·
-`pages/Sources.tsx` · `pages/Projects.tsx` · `pages/Misc.tsx` (tags, jobs, integrations/server,
+`pages/Sources.tsx` · `pages/Projects.tsx` · `pages/Packs.tsx` (pack list, describe dialog, banner above a pack-filtered library) · `pages/Misc.tsx` (tags, jobs, integrations/server,
 login) · `components/Viewer.tsx` (three.js) · `components/NodeGraph.tsx` · `components/ui.tsx`
 · `components/Icon.tsx` · `styles.css` (dark/light themes, responsive).
 
@@ -320,13 +325,17 @@ login) · `components/Viewer.tsx` (three.js) · `components/NodeGraph.tsx` · `c
   (startup), `stash_unreal/` (`__init__` config, `exporter.py` push, `importer.py`
   packages/native/master material, `menus.py` menus + auto-receive tick, `client.py` – identical
   copy of the Blender one, enforced by a test).
+* `integrations/tools/stash_describe.py` – stdlib-only batch describer for packs/assets with a
+  model in LM Studio (or CLIP tags without an LLM). Runs on your own machine; see
+  [BATCH.md](BATCH.md).
 
 ### Tests (`backend/tests/`)
 
 `test_api.py` (full flow on a generated library) · `test_scanner.py` (layouts, Megascans
 sidecars) · `test_vision.py` (stubbed CLIP) · `test_ai.py` (stubbed Claude) ·
 `test_unreal_plugin.py` (plugin vs. a stub `unreal` module) · `test_inspect.py` ·
-`test_formats.py` · `test_blender_pipeline.py` (real Blender, read-only library; opt-in via
+`test_formats.py` · `test_describe_script.py` (batch script against a live server + fake LM
+Studio) · `test_blender_pipeline.py` (real Blender, read-only library; opt-in via
 `STASH_TEST_BLENDER=1`) · `fixtures/make_fixtures.py` (builds the test `.blend`/FBX/GLB).
 
 ---
@@ -340,7 +349,7 @@ sidecars) · `test_vision.py` (stubbed CLIP) · `test_ai.py` (stubbed Claude) ·
 | Add a background step | `@handler("name")` in `processing.py`, a priority in `PRIORITY`, `enqueue(...)` where it should start |
 | Store a new per-asset fact | `meta` (no migration) – promote to a column in `models.py` only if you filter on it |
 | Make it searchable | add the `meta` key to `search._meta_text` |
-| Batch-process assets from outside (e.g. a local LLM) | read `GET /api/assets` + thumbnails, write `PATCH /api/assets/{id}` / `POST /api/assets/{id}/tags`; no server change needed |
+| Batch-process assets from outside (e.g. a local LLM) | `integrations/tools/stash_describe.py` does packs and filtered assets with LM Studio; for anything else read `GET /api/assets` + thumbnails, write `PATCH /api/assets/{id}` / `POST /api/assets/{id}/tags` |
 
 ### Note on naming: "project" vs "pack"
 
@@ -349,6 +358,6 @@ Two different things can be called a project:
 * **Stash Project** – a collection *you* create (`projects` table), e.g. "Game A".
 * **Pack** – where a file came from: the top-level folder of a source, the zip it was in, or the
   `/Game/<Pack>` folder of Unreal content. Stored per asset as `meta.pack` (filter
-  `?pack=Name`, *Packs* in the sidebar). There is no pack table yet, so a pack has no description
-  of its own; a per-pack description would need a small `packs` table (name, source, description,
-  tags).
+  `?pack=Name`, *Packs* in the sidebar and the *Packs* page). A pack can have a description and
+  keywords (`packs` table), written by hand or by `stash_describe.py`; they're searched with every
+  asset of the pack, so individual assets rarely need their own description.

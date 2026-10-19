@@ -34,6 +34,8 @@
   `storage=store` → `/data/store/ab/cd/<sha256>.<ext>`.
 * **AssetLink** – `uses_material`, `uses_texture`, `uses_skeleton`, `animates`, `depends_on`.
 * **Tag**, **Project** (+ProjectAsset), **Job**, **Delivery** (Send-to-Blender/Unreal inbox).
+* **Pack** – description + keywords for a pack name (assets carry the name in `meta.pack`: top-level
+  folder, zip or `/Game/<Pack>`). The text is indexed with every asset of the pack.
 
 Search: an FTS5 table `asset_fts(name, tags, kind, path, description, extra)` maintained by
 `search.index_asset`; names are also indexed split on CamelCase/underscores so `SM_WoodenChair_01`

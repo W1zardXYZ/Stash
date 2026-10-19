@@ -26,7 +26,8 @@ the existing projects I looked at and why this one is built from scratch.
 | **Into your DCC** | Blender add-on: browse/search in the N-panel, import (materials onto the selection, geo-nodes onto the active object, actions onto the active rig, HDRIs onto the world), push selections/files back. Unreal plugin: push Content Browser assets, import packages with auto-built material instances. Both can **receive** assets you click *Send to Blender/Unreal* on in the web UI. |
 | **On-device AI** | A CLIP model running on the NAS's CPU (ONNX Runtime, nothing leaves your network) looks at every thumbnail: one-click **tag suggestions** (object, material, style, colour; environment for HDRIs), **Smart search** by description ("mossy stone wall", "something to sit on"), and **visually similar** assets. |
 | **Claude tagging (optional)** | With an Anthropic API key, *Claude tag* writes a category, tags and a description per asset – higher quality than the on-device model, but cloud and paid. |
-| **Housekeeping** | Pack facet (the asset pack each file came from), duplicate finder (same file in several places), missing-file tracking, scheduled rescans per source. |
+| **Packs** | Every asset knows the pack it came from (top-level folder, zip or Unreal content folder). Give a pack a description and keywords – by hand, or in bulk with a local LLM in **LM Studio** (`stash_describe.py`) or from the CLIP tags – and every asset in it becomes findable by that text. |
+| **Housekeeping** | Duplicate finder (same file in several places), missing-file tracking, scheduled rescans per source. |
 | **Blender add-ons** | Add-ons/extensions in your sources are catalogued, and Stash serves a **Blender extension repository** – add one URL in Blender's preferences and install your own add-on collection from it. |
 
 | Rigged + animated preview | PBR texture set | Unreal project | Procedural material |
@@ -105,6 +106,8 @@ Fab assets reach you in one of three ways; Stash handles each:
 * **Unreal Engine** (5.1+): unzip `StashBridge` into `YourProject/Plugins/`, restart the editor,
   *Stash → Edit settings…* to set the server URL. Details in [docs/UNREAL.md](docs/UNREAL.md).
 * **Blender extension repository**: `http://<nas>:8420/api/blender/extensions/index.json`.
+* **Pack descriptions with a local LLM**: `stash_describe.py` (Integrations page → *Script*) runs
+  on the machine with LM Studio. Details in [docs/BATCH.md](docs/BATCH.md).
 * **REST API**: everything the UI does – OpenAPI docs at `http://<nas>:8420/docs`.
 
 ## Development

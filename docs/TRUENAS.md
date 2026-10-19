@@ -34,9 +34,41 @@ settings → Change visibility → Public* once, or TrueNAS can't pull it (alter
 credentials under *Apps → Configuration → Manage Container Registries*).
 
 Updating: *Apps → stash → Update* if TrueNAS shows one, or Edit → Save to re-pull `:latest`.
-Pin a release tag (`:0.2.0`) instead of `:latest` if you prefer manual upgrades.
+Every build is also tagged with its commit (`:sha-466790c` – see *Packages → stash* on GitHub);
+use one of those instead of `:latest` to pin a version. Your database is upgraded in place on
+start (new tables are added; nothing is dropped).
 
-## 3. What the N100 profile does
+## 3. Test it (10 minutes)
+
+Do this once after installing, with a small folder first (e.g. one asset pack), before pointing it
+at the whole library.
+
+1. **It's up:** *Apps* shows `stash` as *Running*, and `http://<nas-ip>:8420/api/status` returns
+   JSON with `"blender": true`. (Shell alternative: `sudo docker logs stash` should end with
+   `Uvicorn running on http://0.0.0.0:8420`.)
+2. **It can read your files:** **Sources → Add source** → browse `/library/...` → pick a folder
+   with a few packs → *Add*. If the folder browser is empty or the scan fails with *Permission
+   denied*, the *apps* user lacks read access to that share (step 1).
+3. **Indexing works:** the **Jobs** page (spinner icon) shows `scan_source`, then `preview`,
+   `thumbnail`, `extract_blend` and – with on-device AI – `embed_pending` (its first run also
+   downloads the ~600 MB CLIP model). Nothing should end in *error*; click a job to see its log.
+4. **Library:** models show thumbnails; open one and the 3D viewer loads it; texture sets appear as
+   *Material*. Search for a word from an asset name.
+5. **Downloads/conversion:** on an asset page open the *Export* tab and pick *GLB* (or
+   *.blend*) – it runs a job and then offers the file.
+6. **Packs:** the **Packs** page lists the top-level folders you added. Describe one with ✎, then
+   search for a word from the description – every asset of that pack is found.
+7. **On-device AI** (after the model download): an asset page shows *Suggested* tags; the
+   **Smart** toggle next to search finds "wooden chair" style descriptions.
+8. **Your files were not touched:** the share is mounted `:ro`, so Stash *can't* write to it – the
+   TrueNAS snapshot/size of the share stays unchanged.
+
+Then add the rest of your library as sources. A first scan of a big library runs for hours
+because of the Blender work (§4); browsing works while it runs.
+
+Optional, from your Mac: describe all packs with LM Studio – see [BATCH.md](BATCH.md).
+
+## 4. What the N100 profile does
 
 | Setting | Value | Why |
 |---|---|---|
@@ -53,7 +85,7 @@ FBX/OBJ). It runs in the background; the library is browsable immediately and fi
 finish (see **Jobs**). Indexing itself (folders, texture sets, Unreal headers) handles thousands of
 files per second.
 
-## 4. On-device AI on the N100
+## 5. On-device AI on the N100
 
 With `STASH_LOCAL_AI=true` (default) Stash downloads a CLIP model (ViT-B-32, ~600 MB, once, into
 `/data/models`) on the first scan and embeds every thumbnail on the CPU. Measured on a desktop
@@ -66,7 +98,7 @@ What you get: suggested tags on each asset page (click to add, or select many �
 suggestions*), the **Smart** toggle next to the search box, and *Visually similar* under Related.
 No internet access is needed after the model download; set `STASH_LOCAL_AI=false` to turn it off.
 
-## 5. Optional
+## 6. Optional
 
 * **Password:** set `STASH_PASSWORD`; the Blender add-on and Unreal plugin use it as their token.
 * **Reverse proxy / remote access:** set `STASH_PUBLIC_URL` so the Blender extension repository
