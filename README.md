@@ -67,6 +67,8 @@ tagging, Unreal parsing and original-file downloads work; `.blend` splitting and
 | `STASH_THUMBNAIL_SIZE` | `384` | Thumbnail size in px |
 | `STASH_BLENDER` | auto | Path to a Blender binary (`none` to disable) |
 | `STASH_BLENDER_TIMEOUT` | `1800` | Seconds without progress before a Blender job is stopped |
+| `STASH_EXPORT_CACHE_GB` | `10` | Cap for cached downloads/conversions; oldest are evicted (0 = unlimited) |
+| `STASH_PREVIEW_TEXTURE_SIZE` | `1024` | Longest texture edge in web previews (WebP); 0 = full resolution |
 | `STASH_BLENDER_NICE` | `10` | CPU priority of Blender jobs (0–19, higher = gentler on the NAS) |
 | `STASH_BLENDER_THREADS` | `0` | Threads per Blender job (0 = all cores) |
 | `STASH_PUBLIC_URL` | – | External URL when behind a reverse proxy |

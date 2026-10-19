@@ -19,8 +19,16 @@ def test_blend_extraction_and_exports(app_client, run_jobs, tmp_path):
     fx = tmp_path / "fx"
     subprocess.run([settings.blender, "-b", "--factory-startup", "-noaudio", "--python", str(FIXTURES), "--", str(fx)], check=True, capture_output=True)
     c = app_client
-    src = c.post("/api/sources", json={"path": str(fx), "options": {"render_thumbnails": False}}).json()
-    run_jobs()
+    before = sorted(p.relative_to(fx) for p in fx.rglob("*"))
+    for p in [fx, *fx.rglob("*")]:  # the library is read-only for Stash, like a :ro mount
+        p.chmod(p.stat().st_mode & ~0o222)
+    try:
+        src = c.post("/api/sources", json={"path": str(fx), "options": {"render_thumbnails": False}}).json()
+        run_jobs()
+    finally:
+        for p in [fx, *fx.rglob("*")]:
+            p.chmod(p.stat().st_mode | 0o200)
+    assert sorted(p.relative_to(fx) for p in fx.rglob("*")) == before, "Stash wrote into the source library"
     items = {(a["name"], a["kind"]): a for a in c.get("/api/assets", params={"source": src["id"], "per_page": 200}).json()["items"]}
     names = {k[0] for k in items}
     assert {"NoiseCube", "Crate", "Worm", "ScatterPlane", "ProceduralMarble", "Wiggle", "Bend", "ScatterCubes"} <= names, names

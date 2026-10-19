@@ -45,6 +45,10 @@ class Settings:
     blender_nice: int = field(default_factory=lambda: int(_env("BLENDER_NICE", "10")))
     # Blender render/convert threads (0 = all cores)
     blender_threads: int = field(default_factory=lambda: int(_env("BLENDER_THREADS", "0")))
+    # Longest texture edge inside preview GLBs (0 = keep full resolution)
+    preview_texture_size: int = field(default_factory=lambda: int(_env("PREVIEW_TEXTURE_SIZE", "1024")))
+    # Size cap for cached exports/packages in GB; oldest are evicted first (0 = unlimited)
+    export_cache_gb: float = field(default_factory=lambda: float(_env("EXPORT_CACHE_GB", "10")))
     frontend_dir: Path = field(
         default_factory=lambda: Path(
             _env("FRONTEND_DIR", str(Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"))

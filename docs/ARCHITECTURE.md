@@ -39,6 +39,20 @@ Search: an FTS5 table `asset_fts(name, tags, kind, path, description, extra)` ma
 `search.index_asset`; names are also indexed split on CamelCase/underscores so `SM_WoodenChair_01`
 matches "wooden chair". Queries are prefix matches, `-word` excludes, `"phrase"` is exact.
 
+## Storage
+
+* Your files are only read (sources are mounted `:ro` in the TrueNAS profile; tests run the
+  Blender pipeline against a read-only library).
+* Everything Stash generates lives in `/data/store/ab/cd/<sha256>.<ext>`, so identical files are
+  stored once no matter how many assets reference them.
+* `.blend` splitting writes each packed/generated texture to the store **once** and the per-asset
+  `.blend` files reference it (a 40-object kitbash file sharing one 2K texture: 981 MB → 36 MB).
+  Textures are packed only when a `.blend` is downloaded, so downloads still open anywhere.
+* Web-preview GLBs carry WebP textures capped at `STASH_PREVIEW_TEXTURE_SIZE` (1024 px).
+* Conversions/downloads are cached as `export` files up to `STASH_EXPORT_CACHE_GB` (oldest evicted);
+  project packages expire after 7 days; a daily garbage collector deletes store files no row
+  references (replaced thumbnails, removed assets).
+
 ## Pipeline
 
 1. **scan_source** (`ingest/scanner.py`)

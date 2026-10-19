@@ -186,3 +186,31 @@ def test_auth_required_when_password_set(app_client, monkeypatch):
     assert app_client.post("/api/auth/login", json={"password": "secret"}).status_code == 200
     assert app_client.get("/api/assets").status_code == 200  # cookie now set
     app_client.cookies.clear()
+
+
+def test_storage_cleanup(app_client, run_jobs, monkeypatch, tmp_path):
+    import os
+    import time
+
+    from stash.config import settings
+
+    c = app_client
+    # an orphaned file older than the grace period is collected, a referenced one is kept
+    orphan = settings.store_dir / "zz" / "zz" / "orphan.bin"
+    orphan.parent.mkdir(parents=True, exist_ok=True)
+    orphan.write_bytes(b"x" * 1000)
+    old = time.time() - 7200
+    os.utime(orphan, (old, old))
+    before = c.get("/api/maintenance/storage").json()
+    assert before["store_bytes"] >= 1000
+    r = c.post("/api/maintenance/cleanup").json()
+    assert r["gc"]["removed"] >= 1 and not orphan.exists()
+    assert r["gc"]["kept"] > 0  # thumbnails etc. from earlier tests survive
+
+    # export cache cap: with a tiny cap the oldest export is evicted after the next export
+    monkeypatch.setattr(settings, "export_cache_gb", 1e-9)
+    asset = next(a for a in c.get("/api/assets", params={"per_page": 200}).json()["items"] if a["format"] == "stl")
+    r = c.post(f"/api/assets/{asset['id']}/export", json={"target": "original", "force": True}).json()
+    run_jobs()
+    files = c.get(f"/api/assets/{asset['id']}").json()["exports"]
+    assert files == []  # evicted straight away by the 1-byte cap

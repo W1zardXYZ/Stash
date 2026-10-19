@@ -51,6 +51,24 @@ def blender_version():
     return {"available": blender.available(), "version": blender.version()}
 
 
+@router.get("/maintenance/storage")
+def storage(db: Session = Depends(get_db)):
+    from ..maintenance import storage_stats
+
+    return storage_stats(db)
+
+
+@router.post("/maintenance/cleanup")
+def cleanup(db: Session = Depends(get_db)):
+    """Evict over-cap exports, expire old project packages, delete unreferenced store files."""
+    from ..maintenance import enforce_export_cache, gc_store
+
+    cache = enforce_export_cache(db)
+    db.commit()
+    gc = gc_store(db, min_age_seconds=600)
+    return {"export_cache": cache, "gc": gc}
+
+
 @router.post("/maintenance/reindex")
 def reindex(db: Session = Depends(get_db)):
     n = reindex_all(db)

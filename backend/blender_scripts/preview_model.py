@@ -19,7 +19,7 @@ from convert import build_pbr_material, import_file, relink_textures  # noqa: E4
 
 def parse():
     a = sc.script_args()
-    o = {"size": 384, "samples": 24, "search_dirs": [], "glb": None, "thumb": None, "input": None, "image": None, "pbr": None}
+    o = {"size": 384, "samples": 24, "search_dirs": [], "glb": None, "thumb": None, "input": None, "image": None, "pbr": None, "preview_max": 1024}
     i = 0
     while i < len(a):
         k, v = a[i], (a[i + 1] if i + 1 < len(a) else None)
@@ -31,6 +31,8 @@ def parse():
             o["samples"] = int(v); i += 1
         elif k == "--search-dir":
             o["search_dirs"].append(v); i += 1
+        elif k == "--preview-max":
+            o["preview_max"] = int(v); i += 1
         elif k == "--pbr":
             o["pbr"] = json.loads(v); i += 1
         i += 1
@@ -82,11 +84,14 @@ def main():
         ob.hide_render = True
     stats = {"objects": len(objs), "bones": sum(len(ob.data.bones) for ob in objs if ob.type == "ARMATURE"), "actions": [a.name for a in bpy.data.actions]}
     if o["glb"]:
+        # previews only need screen-sized textures; the source files are untouched
+        sc.downscale_images(o["preview_max"])
         for ob in bpy.context.view_layer.objects:
             ob.select_set(ob in objs)
         bpy.ops.export_scene.gltf(
             filepath=o["glb"], export_format="GLB", use_selection=True, export_apply=True,
             export_animations=True, export_animation_mode="ACTIONS", export_yup=True, export_lights=False, export_cameras=False,
+            export_image_format="WEBP" if o["preview_max"] else "AUTO", export_image_quality=85,
         )
     if o["thumb"]:
         for ob in scene.objects:

@@ -103,6 +103,81 @@ def serialize_node_tree(tree, depth=0):
     return {"nodes": nodes, "links": links, "procedural": procedural and not images, "_images": images}
 
 
+def store_path(store, data_path, ext):
+    """Content-addressed location used by the Stash store: ab/cd/<sha256><ext>."""
+    import hashlib
+    import shutil
+
+    h = hashlib.sha256()
+    with open(data_path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    digest = h.hexdigest()
+    dest = os.path.join(store, digest[:2], digest[2:4], digest + ext.lower())
+    if not os.path.exists(dest):
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        shutil.copyfile(data_path, dest + ".tmp")
+        os.replace(dest + ".tmp", dest)
+    return dest
+
+
+def externalize_images(store, scratch):
+    """Write packed/generated images to the store once and point the datablocks at those files,
+    so per-asset .blend files reference shared textures instead of each embedding a copy."""
+    moved = 0
+    for img in bpy.data.images:
+        if img.library is not None or img.type not in ("IMAGE",):
+            continue
+        try:
+            if img.packed_file is not None:
+                ext = os.path.splitext(img.filepath_raw or img.name)[1] or ".png"
+                tmp = os.path.join(scratch, safe_name(img.name) + ext.lower())
+                with open(tmp, "wb") as f:
+                    f.write(img.packed_file.data)
+                dest = store_path(store, tmp, ext)
+                os.remove(tmp)
+                # REMOVE drops the packed copy without writing anything to disk (USE_ORIGINAL would
+                # recreate the file next to the source .blend - never touch the user's library)
+                img.unpack(method="REMOVE")
+                img.filepath = dest
+                img.reload()
+                moved += 1
+            elif img.source == "GENERATED":
+                tmp = os.path.join(scratch, safe_name(img.name) + ".png")
+                img.filepath_raw = tmp
+                img.file_format = "PNG"
+                img.save()
+                dest = store_path(store, tmp, ".png")
+                os.remove(tmp)
+                img.source = "FILE"
+                img.filepath = dest
+                img.reload()
+                moved += 1
+        except Exception as e:
+            print(f"[stash] could not externalize image {img.name}: {e}", flush=True)
+    return moved
+
+
+def downscale_images(max_px):
+    """Shrink in-memory image buffers for previews. Only file-backed, unpacked images are touched,
+    so .blend files written afterwards still reference the full-resolution files on disk."""
+    if not max_px:
+        return 0
+    n = 0
+    for img in bpy.data.images:
+        try:
+            if img.packed_file is not None or img.source != "FILE":
+                continue
+            w, h = img.size
+            if max(w, h) > max_px:
+                s = max_px / max(w, h)
+                img.scale(max(1, int(w * s)), max(1, int(h * s)))
+                n += 1
+        except Exception:
+            pass
+    return n
+
+
 def ensure_dir(p):
     os.makedirs(p, exist_ok=True)
     return p

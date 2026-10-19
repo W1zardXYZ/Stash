@@ -250,16 +250,8 @@ def _export_blender(db, asset, work: Path, name: str, target: str, should_cancel
         raise ExportError("Blender is not available on the server")
     spec = _input_for(db, asset)
     blend = first(asset, "blend")
-    if target == "blend" and blend and asset.kind != "material":
-        dest = work / f"{name}.blend"
-        shutil.copyfile(resolve(blend), dest)
-        return dest
-    if target == "glb" and first(asset, "preview") and not spec.get("pbr"):
-        p = resolve(first(asset, "preview"))
-        if p.suffix.lower() == ".glb" and p.exists():
-            dest = work / f"{name}.glb"
-            shutil.copyfile(p, dest)
-            return dest
+    # per-asset .blend files reference shared textures in the store; a download is packed
+    # (convert.py runs pack_all) so it opens anywhere
     ext = EXT_FOR.get(target, target)
     out_dir = work / name
     out_dir.mkdir()

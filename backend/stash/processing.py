@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import tempfile
+import time
 import zipfile
 from pathlib import Path
 
@@ -110,6 +111,11 @@ def ingest_manifest(db: Session, parent: Asset, manifest: dict, out_dir: Path, c
                 if not p.exists():
                     continue
                 af = add_stored_file(a, p, role, name=p.name, label="render" if role == "thumbnail" else (entry.get("channel") or ""))
+            elif settings.store_dir in p.parents:
+                # written straight into the store by the extractor (shared, de-duplicated texture)
+                if not p.exists():
+                    continue
+                af = add_stored_file(a, p, role, name=f"{a.name}{p.suffix}" if role == "source" else p.name, label=entry.get("channel") or "")
             else:
                 if not p.exists():
                     continue
@@ -208,7 +214,7 @@ def job_extract_blend(ctx: JobContext):
         opts = (asset.source.options if asset.source else {}) or {}
     out = Path(tempfile.mkdtemp(prefix=f"extract_{ctx.asset_id}_", dir=settings.work_dir))
     try:
-        args = ["--out", str(out), "--group", opts.get("group_mode", "auto")]
+        args = ["--out", str(out), "--group", opts.get("group_mode", "auto"), "--store", str(settings.store_dir), "--preview-max", str(settings.preview_texture_size)]
         if settings.render_thumbnails and opts.get("render_thumbnails", True):
             args += ["--thumbs", "--size", str(settings.thumbnail_size), "--samples", str(opts.get("thumbnail_samples", 24))]
         ctx.log(f"extracting {path}")
@@ -258,7 +264,7 @@ def job_preview(ctx: JobContext):
     render_only = ctx.payload.get("render_only") or path.suffix.lower() in (".glb", ".gltf") and not pbr
     out = Path(tempfile.mkdtemp(prefix=f"preview_{ctx.asset_id}_", dir=settings.work_dir))
     try:
-        args = ["--input", str(path)]
+        args = ["--input", str(path), "--preview-max", str(settings.preview_texture_size)]
         if not render_only:
             args += ["--glb", str(out / "preview.glb")]
         if settings.render_thumbnails:
@@ -374,7 +380,18 @@ def scheduler_loop(stop_event) -> None:
     """Re-scan sources whose `rescan_hours` option has elapsed (checked every minute)."""
     from datetime import datetime, timedelta, timezone
 
+    last_gc = time.time()
     while not stop_event.wait(60):
+        if time.time() - last_gc > 24 * 3600:
+            last_gc = time.time()
+            try:
+                from .maintenance import enforce_export_cache, gc_store
+
+                with session_scope() as db:
+                    enforce_export_cache(db)
+                    gc_store(db)
+            except Exception:
+                pass
         try:
             with session_scope() as db:
                 now = datetime.now(timezone.utc)
@@ -404,7 +421,12 @@ def job_export(ctx: JobContext):
             raise RuntimeError(f"target {target} not available for this asset")
         ctx.progress(0.1, f"exporting {target}")
         af = export_asset(db, asset, target, should_cancel=ctx.cancelled)
-        return {"file_id": af.id, "name": af.name, "size": af.size}
+        result = {"file_id": af.id, "name": af.name, "size": af.size}
+    with session_scope() as db:
+        from .maintenance import enforce_export_cache
+
+        enforce_export_cache(db)
+    return result
 
 
 @handler("package_project")
@@ -444,6 +466,10 @@ def job_package_project(ctx: JobContext):
             z.writestr("stash_project.json", json.dumps({"project": pname, "target": target, "errors": errors}, indent=2))
         # the zip lives in the store; /api/jobs/{id}/download serves it
         rel, _digest, size = _store_package(zpath)
+        with session_scope() as db:
+            from .maintenance import enforce_export_cache
+
+            enforce_export_cache(db)
         return {"store_path": rel, "name": zpath.name, "size": size, "errors": errors}
     finally:
         shutil.rmtree(out, ignore_errors=True)

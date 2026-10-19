@@ -9,7 +9,10 @@ Options:
   --thumbs                                 render Cycles thumbnails (CPU)
   --size N --samples N                     thumbnail size / samples
   --no-glb / --no-blend                    skip per-asset GLB previews / .blend files
-  --no-pack                                don't pack textures into the per-asset .blend files
+  --store DIR                              Stash store: packed/generated images are written there once
+                                           and the per-asset .blend files reference them
+  --pack                                   embed textures into every per-asset .blend instead
+  --preview-max N                          max texture size inside preview GLBs (default 1024, 0 = full)
 
 Writes DIR/manifest.json describing every extracted asset; file paths in the manifest are
 relative to DIR unless they point at existing external texture files (absolute).
@@ -32,7 +35,7 @@ EXPORTABLE_ROOT_TYPES = GEOMETRY_TYPES | {"ARMATURE", "EMPTY"}
 
 def parse_args():
     a = sc.script_args()
-    opts = {"out": None, "group": "auto", "thumbs": False, "size": 384, "samples": 24, "glb": True, "blend": True, "pack": True}
+    opts = {"out": None, "group": "auto", "thumbs": False, "size": 384, "samples": 24, "glb": True, "blend": True, "pack": False, "store": None, "preview_max": 1024}
     i = 0
     while i < len(a):
         k = a[i]
@@ -52,6 +55,12 @@ def parse_args():
             opts["blend"] = False
         elif k == "--no-pack":
             opts["pack"] = False
+        elif k == "--pack":
+            opts["pack"] = True
+        elif k == "--store":
+            opts["store"] = a[i + 1]; i += 1
+        elif k == "--preview-max":
+            opts["preview_max"] = int(a[i + 1]); i += 1
         i += 1
     if not opts["out"]:
         raise SystemExit("--out is required")
@@ -389,6 +398,8 @@ class ExportScene:
                 export_yup=True,
                 export_lights=False,
                 export_cameras=False,
+                export_image_format="WEBP" if self.opts["preview_max"] else "AUTO",
+                export_image_quality=85,
             )
         finally:
             for o in added:
@@ -462,6 +473,9 @@ def main():
     else:
         groups = group_objects_mode()
 
+    if opts["store"] and not opts["pack"]:
+        n = sc.externalize_images(opts["store"], tex_dir)
+        log(f"{n} packed/generated images written to the store")
     if opts["pack"] and opts["blend"]:
         for img in bpy.data.images:
             try:
@@ -488,6 +502,7 @@ def main():
     used_actions = []
     total = len(groups) + 1
 
+    preview_scaled = False
     for gi, g in enumerate(groups):
         progress(gi, total)
         key = g["key"]
@@ -528,6 +543,10 @@ def main():
                 if es.write_blend(p):
                     entry["files"]["blend"] = os.path.basename(p)
             if opts["glb"]:
+                if not preview_scaled and not opts["pack"]:
+                    # after the first .blend is written: buffers only, files on disk stay full-res
+                    sc.downscale_images(opts["preview_max"])
+                    preview_scaled = True
                 p = os.path.join(out, safe + ".glb")
                 try:
                     if es.export_glb(objs, p, animations=bool(acts)):

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { AssetBrief, Job, Status, TagInfo, api, qs } from "../api";
+import { AssetBrief, Job, Status, TagInfo, api, formatBytes, qs } from "../api";
 import { Icon } from "../components/Icon";
 import { AssetCard, CopyField, Modal, Progress, useToast } from "../components/ui";
 
@@ -125,12 +125,17 @@ function dur(j: Job) {
 }
 
 // ---------------------------------------------------------------- integrations / add-ons
+interface Storage { store_bytes: number; database_bytes: number; export_cache_cap_bytes: number; by_role: Record<string, number> }
+
 export function IntegrationsPage() {
+  const toast = useToast();
   const [status, setStatus] = useState<Status | null>(null);
+  const [storage, setStorage] = useState<Storage | null>(null);
   const [addons, setAddons] = useState<AssetBrief[]>([]);
   const origin = window.location.origin;
   useEffect(() => {
     api.get<Status>("/api/status").then(setStatus);
+    api.get<Storage>("/api/maintenance/storage").then(setStorage).catch(() => undefined);
     api.get<{ items: AssetBrief[] }>(`/api/assets${qs({ kind: "addon", per_page: 200, sort: "name", order: "asc" })}`).then((r) => setAddons(r.items));
   }, []);
   return (
@@ -178,7 +183,21 @@ export function IntegrationsPage() {
               <dt>Auth</dt><dd>{status.auth ? "password / token required" : "open (set STASH_PASSWORD to protect)"}</dd>
             </dl>
           )}
-          <button className="btn sm" onClick={() => api.post("/api/maintenance/reindex")}>Rebuild search index</button>
+          {storage && (
+            <dl className="kv">
+              <dt>Stash data</dt><dd>{formatBytes(storage.store_bytes)} files · {formatBytes(storage.database_bytes)} database</dd>
+              <dt>Export cache</dt><dd>{formatBytes(storage.by_role.export ?? 0)} of {storage.export_cache_cap_bytes ? formatBytes(storage.export_cache_cap_bytes) : "unlimited"}</dd>
+              <dt>Previews</dt><dd>{formatBytes((storage.by_role.preview ?? 0) + (storage.by_role.thumbnail ?? 0))}</dd>
+            </dl>
+          )}
+          <div className="row wrap">
+            <button className="btn sm" onClick={async () => {
+              const r = await api.post<{ gc: { removed: number; freed_bytes: number }; export_cache: { removed: number; freed_bytes: number } }>("/api/maintenance/cleanup");
+              toast(`Freed ${formatBytes(r.gc.freed_bytes + r.export_cache.freed_bytes)} (${r.gc.removed + r.export_cache.removed} files)`, "ok");
+              api.get<Storage>("/api/maintenance/storage").then(setStorage);
+            }}>Clean up storage</button>
+            <button className="btn sm" onClick={() => api.post("/api/maintenance/reindex")}>Rebuild search index</button>
+          </div>
         </div>
       </div>
 
