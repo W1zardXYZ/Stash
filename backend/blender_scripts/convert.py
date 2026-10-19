@@ -11,6 +11,8 @@ Options:
   --material-only         with --pbr: output a preview sphere using that material
   --scale F               uniform scale applied before export
   --append-blend FILE:Type:Name   append a datablock (used for Blender-native material/action assets)
+  --action NAME           keep only this action (exact name, or the part after the last "|"), on every
+                          armature, renamed to NAME: the export of one animation clip
 """
 
 import json
@@ -26,7 +28,7 @@ import stash_common as sc  # noqa: E402
 
 def parse_args():
     a = sc.script_args()
-    o = {"search_dirs": [], "objects": None, "collection": None, "pbr": None, "material_only": False, "scale": 1.0, "append": []}
+    o = {"search_dirs": [], "objects": None, "collection": None, "pbr": None, "material_only": False, "scale": 1.0, "append": [], "action": None}
     i = 0
     while i < len(a):
         k = a[i]
@@ -51,6 +53,8 @@ def parse_args():
             o["append"].append(v); i += 1
         elif k == "--material-only":
             o["material_only"] = True
+        elif k == "--action":
+            o["action"] = v; i += 1
         i += 1
     return o
 
@@ -112,6 +116,24 @@ def keep_only(objects=None, collection=None):
     for o in list(bpy.data.objects):
         if o not in keep:
             bpy.data.objects.remove(o)
+
+
+def keep_action(name):
+    act = next((a for a in bpy.data.actions if a.name == name), None) or next((a for a in bpy.data.actions if a.name.split("|")[-1] == name), None)
+    if act is None:
+        raise RuntimeError(f"no action {name!r} in {[a.name for a in bpy.data.actions]}")
+    for ob in bpy.data.objects:
+        ad = ob.animation_data
+        if ad is not None:
+            for track in list(ad.nla_tracks):  # the glTF importer stashes the other clips here
+                ad.nla_tracks.remove(track)
+    for a in list(bpy.data.actions):
+        if a != act:
+            bpy.data.actions.remove(a)
+    act.name = name
+    for ob in bpy.data.objects:
+        if ob.type == "ARMATURE":
+            ob.animation_data_create().action = act
 
 
 def relink_textures(dirs):
@@ -318,6 +340,9 @@ def main():
                         for i, m in enumerate(slots):
                             if m is None or not any(n.bl_idname == "ShaderNodeTexImage" for n in (m.node_tree.nodes if m.use_nodes else [])):
                                 slots[i] = mat
+
+    if o["action"]:
+        keep_action(o["action"])
 
     if o["scale"] != 1.0:
         for ob in bpy.data.objects:

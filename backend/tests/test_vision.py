@@ -52,7 +52,9 @@ def test_embeddings_suggestions_search_similar(app_client, run_jobs, tmp_path, m
 
     sim = c.get(f"/api/assets/{items['red_one']['id']}/similar").json()["items"]
     mine = [a["name"] for a in sim if a["source_id"] == src["id"]]
-    assert mine == ["red_two"]  # the blue one is not similar
+    # the blue one is never similar; red_two is unless other tests' near-identical orange images
+    # in the shared database make it not stand out (the cut-off is unit-tested below)
+    assert mine in ([], ["red_two"])
 
     assert c.post("/api/ai/accept-suggestions", json={"ids": [items["red_one"]["id"]]}).json()["added"] == 1
     assert "rock" in c.get(f"/api/assets/{items['red_one']['id']}").json()["tags"]
@@ -70,3 +72,29 @@ def test_suggest_tags_respects_kind(monkeypatch):
     assert {t["tag"] for t in vision.suggest_tags(v, "model")} == {"chair", "wood"}
     assert {t["tag"] for t in vision.suggest_tags(v, "material")} == {"wood"}  # no objects on material balls
     assert vision.suggest_tags(v, "texture", "normal") == []  # data maps get nothing
+
+
+def test_similar_keeps_only_what_stands_out():
+    """CLIP scores of 3D renders bunch up (~0.7 for anything); only clear outliers count as similar."""
+    from stash.vision import EmbeddingIndex
+
+    rng = np.random.default_rng(0)
+    base = np.ones(16, dtype=np.float32)
+    def unit(v):
+        return (v / np.linalg.norm(v)).astype(np.float32)
+    query = unit(base + rng.normal(0, 0.6, 16))
+    vecs = [unit(base + rng.normal(0, 0.6, 16)) for _ in range(30)] + [unit(query + rng.normal(0, 0.05, 16)) for _ in range(2)]
+    idx = EmbeddingIndex()
+    idx.ids = np.arange(1, len(vecs) + 2, dtype=np.int64)
+    idx.mat = np.stack(vecs + [query]).astype(np.float16)
+    idx.dirty = False
+    query_id = len(vecs) + 1
+    assert min(float(v @ query) for v in vecs[:30]) > 0.3  # everything looks somewhat alike
+    hits = idx.search(None, query, limit=24, exclude=query_id, min_z=1.5, min_score=0.85)
+    assert sorted(i for i, _ in hits) == [31, 32]
+
+    # a library this small has no meaningful statistics: an absolute bar applies instead
+    idx.ids = np.array([31, 32, 1, 33], dtype=np.int64)
+    idx.mat = np.stack([vecs[30], vecs[31], vecs[0], query]).astype(np.float16)
+    hits = idx.search(None, query, limit=24, exclude=33, min_z=1.5, min_score=0.85)
+    assert sorted(i for i, _ in hits) == [31, 32]

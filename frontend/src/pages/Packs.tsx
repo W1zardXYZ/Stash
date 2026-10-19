@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { KIND_LABELS, PackDetail, PackInfo, api, packUrl } from "../api";
 import { Icon } from "../components/Icon";
-import { Modal, useToast } from "../components/ui";
+import { Modal, pressable, useToast } from "../components/ui";
 
 function byLine(p: PackInfo) {
   if (!p.description) return null;
@@ -46,7 +46,7 @@ export function PackList() {
       ) : (
         <div className="cards">
           {shown.map((p) => (
-            <div key={p.name} className="panel proj-card" onClick={() => navigate(`/?pack=${encodeURIComponent(p.name)}`)}>
+            <div key={p.name} className="panel proj-card" {...pressable(() => navigate(`/?pack=${encodeURIComponent(p.name)}`))} aria-label={p.name}>
               <div className="covers one">
                 {p.cover ? <img src={p.cover} alt="" /> : <div style={{ display: "grid", placeItems: "center", color: "var(--text-3)" }}><Icon name="layers" size={36} stroke={1.1} /></div>}
               </div>

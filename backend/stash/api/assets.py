@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from ..convert.exporter import available_targets
+from ..convert.exporter import available_targets, cached_export
 from ..db import get_db
 from ..images import PIL_FORMATS, normalize_thumbnail, scaled_jpeg
 from ..jobs import enqueue
@@ -488,11 +488,8 @@ def export(asset_id: int, body: ExportBody, db: Session = Depends(get_db)):
     if body.target not in available_targets(a):
         raise HTTPException(400, f"target '{body.target}' not available for this asset")
     if not body.force:
-        cached = next(
-            (f for f in a.files if f.role == "export" and f.label == body.target and (f.meta or {}).get("fingerprint") == a.fingerprint),
-            None,
-        )
-        if cached and resolve(cached).exists():
+        cached = cached_export(a, body.target)
+        if cached:
             return {"file": ser_file(cached)}
     jid = enqueue("export", {"target": body.target}, asset_id=a.id, priority=PRIORITY["export"])
     return {"job_id": jid}

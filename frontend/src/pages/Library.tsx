@@ -21,6 +21,10 @@ function toggleIn(list: string[], v: string) {
   return list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
 }
 
+function Facet({ on, onClick, title, children }: { on: boolean; onClick: () => void; title?: string; children: React.ReactNode }) {
+  return <button type="button" className={`facet ${on ? "on" : ""}`} aria-pressed={on} onClick={onClick} title={title}>{children}</button>;
+}
+
 export default function Library({ projectId, header }: { projectId?: number; header?: React.ReactNode }) {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
@@ -129,7 +133,7 @@ export default function Library({ projectId, header }: { projectId?: number; hea
   };
 
   const lastClicked = useRef<number | null>(null);
-  const clickCard = (a: AssetBrief, idx: number, e: React.MouseEvent) => {
+  const clickCard = (a: AssetBrief, idx: number, e: React.MouseEvent | React.KeyboardEvent) => {
     if (selecting || e.shiftKey || e.metaKey || e.ctrlKey) {
       const next = new Set(selected);
       if (e.shiftKey && lastClicked.current !== null) {
@@ -168,34 +172,34 @@ export default function Library({ projectId, header }: { projectId?: number; hea
       <aside className="sidebar">
         <h4>Type</h4>
         {KIND_ORDER.filter((k) => facets?.kinds[k]).map((k) => (
-          <div key={k} className={`facet ${kinds.includes(k) ? "on" : ""}`} onClick={() => update({ kind: toggleIn(kinds, k) })}>
+          <Facet key={k} on={kinds.includes(k)} onClick={() => update({ kind: toggleIn(kinds, k) })}>
             <Icon name={KIND_ICON[k]} size={15} />
             {KIND_LABELS[k]}
             <span className="count">{formatCount(facets!.kinds[k])}</span>
-          </div>
+          </Facet>
         ))}
         <h4>Features</h4>
         {Object.entries(FLAG_LABELS).map(([f, [label, icon]]) =>
           facets?.flags[f] ? (
-            <div key={f} className={`facet ${flags.includes(f) ? "on" : ""}`} onClick={() => update({ flags: toggleIn(flags, f) })}>
+            <Facet key={f} on={flags.includes(f)} onClick={() => update({ flags: toggleIn(flags, f) })}>
               <Icon name={icon} size={15} />
               {label}
               <span className="count">{formatCount(facets.flags[f])}</span>
-            </div>
+            </Facet>
           ) : null,
         )}
-        <div className={`facet ${rootOnly ? "on" : ""}`} onClick={() => update({ root: rootOnly ? null : "1" })} title="Hide objects extracted from files">
+        <Facet on={rootOnly} onClick={() => update({ root: rootOnly ? null : "1" })} title="Hide objects extracted from files">
           <Icon name="layers" size={15} />Top-level only
-        </div>
+        </Facet>
         {!projectId && sources.length > 0 && (
           <>
             <h4>Sources</h4>
             {sources.map((s) => (
-              <div key={s.id} className={`facet ${source === String(s.id) ? "on" : ""}`} onClick={() => update({ source: source === String(s.id) ? null : String(s.id) })}>
+              <Facet key={s.id} on={source === String(s.id)} onClick={() => update({ source: source === String(s.id) ? null : String(s.id) })}>
                 <Icon name={s.kind === "unreal_project" ? "unreal" : s.kind === "blender_file" ? "blender" : "folder"} size={15} />
                 <span className="ellipsis">{s.name}</span>
                 <span className="count">{formatCount(s.asset_count)}</span>
-              </div>
+              </Facet>
             ))}
           </>
         )}
@@ -203,11 +207,11 @@ export default function Library({ projectId, header }: { projectId?: number; hea
           <>
             <h4>Packs</h4>
             {Object.entries(facets.packs).slice(0, 40).map(([p, n]) => (
-              <div key={p} className={`facet ${pack === p ? "on" : ""}`} onClick={() => update({ pack: pack === p ? null : p })} title={p}>
+              <Facet key={p} on={pack === p} onClick={() => update({ pack: pack === p ? null : p })} title={p}>
                 <Icon name="layers" size={15} />
                 <span className="ellipsis">{p}</span>
                 <span className="count">{formatCount(n)}</span>
-              </div>
+              </Facet>
             ))}
           </>
         )}
@@ -215,11 +219,11 @@ export default function Library({ projectId, header }: { projectId?: number; hea
           <>
             <h4>Unreal class</h4>
             {Object.entries(facets.ue_classes).sort((a, b) => b[1] - a[1]).slice(0, 14).map(([c, n]) => (
-              <div key={c} className={`facet ${ueClass === c ? "on" : ""}`} onClick={() => update({ ue_class: ueClass === c ? null : c })}>
+              <Facet key={c} on={ueClass === c} onClick={() => update({ ue_class: ueClass === c ? null : c })}>
                 <Icon name="unreal" size={15} />
                 <span className="ellipsis">{c}</span>
                 <span className="count">{formatCount(n)}</span>
-              </div>
+              </Facet>
             ))}
           </>
         )}
@@ -227,11 +231,11 @@ export default function Library({ projectId, header }: { projectId?: number; hea
           <>
             <h4>Tags</h4>
             {facets.tags.slice(0, 60).map((t) => (
-              <div key={t.name} className={`facet ${tags.includes(t.name) ? "on" : ""}`} onClick={() => update({ tags: toggleIn(tags, t.name) })}>
+              <Facet key={t.name} on={tags.includes(t.name)} onClick={() => update({ tags: toggleIn(tags, t.name) })}>
                 <span className="dot" style={{ background: t.color || "var(--text-3)" }} />
                 <span className="ellipsis">{t.name}</span>
                 <span className="count">{formatCount(t.count)}</span>
-              </div>
+              </Facet>
             ))}
           </>
         )}
@@ -245,7 +249,7 @@ export default function Library({ projectId, header }: { projectId?: number; hea
           <div className="search">
             <Icon name="search" size={16} />
             <input ref={searchRef} placeholder="Search names, tags, materials, bones… ( -exclude  &quot;phrase&quot; )" value={searchText} onChange={(e) => setSearchText(e.target.value)} />
-            {searchText ? <button className="btn ghost sm icon" onClick={() => setSearchText("")}><Icon name="x" size={14} /></button> : <kbd>/</kbd>}
+            {searchText ? <button className="btn ghost sm icon" onClick={() => setSearchText("")} title="Clear search"><Icon name="x" size={14} /></button> : <kbd>/</kbd>}
           </div>
           {localAi && (
             <button className={`btn ${smart ? "on" : ""}`} onClick={() => update({ smart: smart ? null : "1" })} title="Smart search: match what thumbnails look like, not just names and tags (on-device AI)">
@@ -319,7 +323,7 @@ export default function Library({ projectId, header }: { projectId?: number; hea
             {projectId && <button className="btn sm" onClick={() => bulk({ remove_from_project: projectId }, "Removed from project")}>Remove from project</button>}
             <button className="btn sm" title="Send to Blender" onClick={() => api.post("/api/deliveries", { app: "blender", asset_ids: [...selected] }).then(() => toast("Sent to Blender", "ok"))}><Icon name="blender" size={14} /></button>
             <button className="btn sm" title="Send to Unreal" onClick={() => api.post("/api/deliveries", { app: "unreal", asset_ids: [...selected] }).then(() => toast("Sent to Unreal", "ok"))}><Icon name="unreal" size={14} /></button>
-            <button className="btn sm" onClick={() => bulk({ favorite: true }, "Marked as favorite")}><Icon name="star" size={14} /></button>
+            <button className="btn sm" onClick={() => bulk({ favorite: true }, "Marked as favorite")} title="Mark as favorite"><Icon name="star" size={14} /></button>
             {localAi && (
               <button className="btn sm" title="Add the on-device AI tag suggestions as real tags" onClick={() => api.post<{ added: number }>("/api/ai/accept-suggestions", { ids: [...selected] }).then((r) => { toast(`${r.added} suggested tags added`, "ok"); load(1); }).catch((e) => toast(e.message, "error"))}>
                 <Icon name="check" size={14} />Accept suggestions
@@ -330,10 +334,10 @@ export default function Library({ projectId, header }: { projectId?: number; hea
                 <Icon name="sparkle" size={14} />Claude tag
               </button>
             )}
-            <button className="btn sm danger" onClick={() => confirm(`Remove ${selected.size} assets from the library? Files on disk are not touched.`) && bulk({ delete: true }, "Removed")}>
+            <button className="btn sm danger" onClick={() => confirm(`Remove ${selected.size} assets from the library? Files on disk are not touched.`) && bulk({ delete: true }, "Removed")} title="Remove from library">
               <Icon name="trash" size={14} />
             </button>
-            <button className="btn sm ghost" onClick={() => { setSelected(new Set()); setSelecting(false); }}><Icon name="x" size={14} /></button>
+            <button className="btn sm ghost" onClick={() => { setSelected(new Set()); setSelecting(false); }} title="Clear selection"><Icon name="x" size={14} /></button>
           </div>
         )}
         {bulkTag && <BulkTagModal onClose={() => setBulkTag(false)} onApply={(add, remove) => { setBulkTag(false); bulk({ add_tags: add, remove_tags: remove }, "Tags updated"); }} suggestions={facets?.tags.map((t) => t.name) ?? []} />}

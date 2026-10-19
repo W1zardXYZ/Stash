@@ -37,13 +37,29 @@ export function Modal({ title, onClose, children, footer, width }: { title: stri
       <div className="modal" style={width ? { width: `min(${width}px, 100%)` } : undefined}>
         <div className="m-head">
           <h3>{title}</h3>
-          <button className="btn ghost icon sm" onClick={onClose}><Icon name="x" size={16} /></button>
+          <button className="btn ghost icon sm" onClick={onClose} title="Close"><Icon name="x" size={16} /></button>
         </div>
         <div className="m-body">{children}</div>
         {footer && <div className="m-foot">{footer}</div>}
       </div>
     </div>
   );
+}
+
+// ---------------------------------------------------------------- keyboard access
+/** Click + Enter/Space for an element that can't be a <button> because it holds other controls or block content. */
+export function pressable<E extends Element>(onActivate: (e: React.MouseEvent<E> | React.KeyboardEvent<E>) => void) {
+  return {
+    role: "button",
+    tabIndex: 0,
+    onClick: onActivate,
+    onKeyDown: (e: React.KeyboardEvent<E>) => {
+      if ((e.key === "Enter" || e.key === " ") && e.target === e.currentTarget) {
+        e.preventDefault();
+        onActivate(e);
+      }
+    },
+  };
 }
 
 // ---------------------------------------------------------------- cards
@@ -59,10 +75,10 @@ export function Thumb({ asset, size = 56 }: { asset: Pick<AssetBrief, "thumbnail
   );
 }
 
-export function AssetCard({ asset, selected, onClick, onSelect }: { asset: AssetBrief; selected?: boolean; onClick: (e: React.MouseEvent) => void; onSelect?: () => void }) {
+export function AssetCard({ asset, selected, onClick, onSelect }: { asset: AssetBrief; selected?: boolean; onClick: (e: React.MouseEvent | React.KeyboardEvent) => void; onSelect?: () => void }) {
   const cover = asset.kind === "texture" || asset.kind === "hdri" || (asset.kind === "material" && asset.format === "pbr");
   return (
-    <div className={`card ${selected ? "selected" : ""}`} onClick={onClick} title={asset.source_path}>
+    <div className={`card ${selected ? "selected" : ""}`} {...pressable(onClick)} aria-label={asset.name} title={asset.source_path}>
       <div className={`thumb ${cover ? "cover" : ""}`}>
         <Thumb asset={asset} />
         <div className="flags">
@@ -73,7 +89,7 @@ export function AssetCard({ asset, selected, onClick, onSelect }: { asset: Asset
         </div>
         {asset.favorite && !selected && <span className="fav"><Icon name="star" size={15} /></span>}
         {onSelect && (
-          <span className="check" onClick={(e) => { e.stopPropagation(); onSelect(); }}>
+          <span className="check" {...pressable((e) => { e.stopPropagation(); onSelect(); })} role="checkbox" aria-checked={!!selected} aria-label={`Select ${asset.name}`}>
             {selected && <Icon name="check" size={13} stroke={3} />}
           </span>
         )}
@@ -93,7 +109,7 @@ export function AssetCard({ asset, selected, onClick, onSelect }: { asset: Asset
 
 export function MiniCard({ asset, note, onClick }: { asset: AssetBrief; note?: string; onClick: () => void }) {
   return (
-    <div className="mini" onClick={onClick} title={asset.name}>
+    <div className="mini" {...pressable(onClick)} title={asset.name}>
       <div className="t"><Thumb asset={asset} size={28} /></div>
       <div className="n">{asset.name}</div>
       {note && <div className="r">{note}</div>}
@@ -120,7 +136,7 @@ export function TagInput({ tags, onAdd, onRemove, suggestions = [] }: { tags: st
       </div>
       <div className="row">
         <input className="input" placeholder="Add tags (comma separated)…" value={v} list={listId} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
-        <button className="btn" onClick={submit}><Icon name="plus" size={14} /></button>
+        <button className="btn" onClick={submit} title="Add tags"><Icon name="plus" size={14} /></button>
         <datalist id={listId}>{suggestions.map((s) => <option key={s} value={s} />)}</datalist>
       </div>
     </div>
@@ -131,7 +147,7 @@ export function Stars({ value, onChange }: { value: number; onChange: (v: number
   return (
     <span className="stars">
       {[1, 2, 3, 4, 5].map((i) => (
-        <button key={i} className={i <= value ? "on" : ""} onClick={() => onChange(i === value ? 0 : i)}><Icon name="star" size={16} /></button>
+        <button key={i} className={i <= value ? "on" : ""} onClick={() => onChange(i === value ? 0 : i)} title={`${i} star${i > 1 ? "s" : ""}`} aria-pressed={i <= value}><Icon name="star" size={16} /></button>
       ))}
     </span>
   );
@@ -146,7 +162,7 @@ export function CopyField({ value }: { value: string }) {
   return (
     <div className="copy">
       <code>{value}</code>
-      <button className="btn sm icon" onClick={() => { navigator.clipboard?.writeText(value); toast("Copied", "ok"); }}><Icon name="copy" size={14} /></button>
+      <button className="btn sm icon" onClick={() => { navigator.clipboard?.writeText(value); toast("Copied", "ok"); }} title="Copy"><Icon name="copy" size={14} /></button>
     </div>
   );
 }

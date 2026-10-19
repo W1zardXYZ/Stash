@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Source, Status, api } from "../api";
 import { Icon } from "../components/Icon";
-import { Modal, useToast } from "../components/ui";
+import { Modal, pressable, useToast } from "../components/ui";
 
 const KIND_INFO: Record<string, [string, string]> = {
   folder: ["Folder", "folder"],
@@ -130,12 +130,12 @@ function FsBrowser({ value, onChange }: { value: string; onChange: (p: string) =
   return (
     <div>
       <div className="row" style={{ marginBottom: 8 }}>
-        <button className="btn sm icon" disabled={!cwd} onClick={() => open(parent)}><Icon name="back" size={14} /></button>
+        <button className="btn sm icon" disabled={!cwd} onClick={() => open(parent)} title="Up one folder"><Icon name="back" size={14} /></button>
         <code className="grow ellipsis small">{cwd ?? "Roots"}</code>
       </div>
       <div className="fs-list">
         {entries.map((e) => (
-          <div key={e.path} className={`fs-item ${value === e.path ? "sel" : ""}`} onClick={() => (e.dir ? open(e.path) : onChange(e.path))}>
+          <div key={e.path} className={`fs-item ${value === e.path ? "sel" : ""}`} {...pressable(() => (e.dir ? open(e.path) : onChange(e.path)))}>
             <Icon name={e.dir ? "folder" : e.name.endsWith(".blend") ? "blender" : e.name.endsWith(".uproject") ? "unreal" : "file"} size={15} />
             {e.name}
           </div>

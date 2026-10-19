@@ -76,3 +76,52 @@ def test_blend_render_beats_embedded_preview(app_client, run_jobs, tmp_path, mon
     app_client.post(f"/api/sources/{src['id']}/scan")
     run_jobs()
     assert app_client.get(f"/api/assets/{parent_id}").json()["thumbnail"] == rendered
+
+
+def test_model_size_counts_its_files(app_client, run_jobs, tmp_path):
+    """A .gltf is a few KB of JSON; its size is that plus the .bin buffer and textures."""
+    import json
+
+    d = tmp_path / "Helmet"
+    d.mkdir()
+    (d / "helmet.bin").write_bytes(b"\0" * 5000)
+    write_png(d / "albedo.png", size=64)
+    gltf = {
+        "asset": {"version": "2.0"},
+        "buffers": [{"uri": "helmet.bin", "byteLength": 5000}],
+        "images": [{"uri": "albedo.png"}],
+        "textures": [{"source": 0}],
+        "materials": [{"pbrMetallicRoughness": {"baseColorTexture": {"index": 0}}}],
+        "meshes": [{"primitives": [{"attributes": {}, "material": 0}]}],
+    }
+    (d / "helmet.gltf").write_text(json.dumps(gltf))
+    src = app_client.post("/api/sources", json={"path": str(tmp_path)}).json()
+    run_jobs()
+    helmet = next(a for a in app_client.get("/api/assets", params={"source": src["id"]}).json()["items"] if a["name"] == "helmet")
+    expected = sum(p.stat().st_size for p in d.iterdir())
+    assert helmet["size"] == expected, (helmet["size"], expected)
+
+
+def test_clips_of_rigged_models_become_animation_assets(app_client, run_jobs, tmp_path):
+    """Like the actions of a .blend: each clip of a rigged .glb/.fbx is its own animation asset."""
+    from helpers import write_glb
+
+    glb = write_glb(tmp_path / "Hero.glb", animations=("Walk", "Run"))
+    src = app_client.post("/api/sources", json={"path": str(tmp_path)}).json()
+    run_jobs()
+
+    def assets():
+        return {(a["name"], a["kind"]): a for a in app_client.get("/api/assets", params={"source": src["id"], "status": "ok"}).json()["items"]}
+
+    items = assets()
+    hero = items[("Hero", "skeletal_model")]
+    for clip in ("Walk", "Run"):
+        anim = app_client.get(f"/api/assets/{items[(clip, 'animation')]['id']}").json()
+        assert anim["parent_id"] == hero["id"] and anim["is_animated"]
+        assert any(l["relation"] == "animates" and l["asset"]["id"] == hero["id"] for l in anim["links"])
+
+    write_glb(glb, animations=("Walk",))  # "Run" removed from the file
+    app_client.post(f"/api/sources/{src['id']}/scan")
+    run_jobs()
+    items = assets()
+    assert ("Walk", "animation") in items and ("Run", "animation") not in items

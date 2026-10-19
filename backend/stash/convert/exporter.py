@@ -12,6 +12,7 @@ Targets
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -34,6 +35,27 @@ MULTI_FILE = {"gltf", "obj", "fbx_unreal", "fbx_unity"}
 
 class ExportError(RuntimeError):
     pass
+
+
+def _converter_version() -> str:
+    """Hash of the code that produces exports, so a fix there doesn't keep serving old cached files."""
+    h = hashlib.sha256()
+    for p in sorted([*Path(__file__).resolve().parent.glob("*.py"), *blender.SCRIPTS_DIR.glob("*.py")]):
+        h.update(p.name.encode() + p.read_bytes())
+    return h.hexdigest()[:12]
+
+
+CONVERTER_VERSION = _converter_version()
+
+
+def export_key(asset: Asset) -> str:
+    return f"{asset.fingerprint}:{CONVERTER_VERSION}"
+
+
+def cached_export(asset: Asset, target: str) -> AssetFile | None:
+    """A stored export of this asset that is still current (same source files, same converter)."""
+    f = next((f for f in asset.files if f.role == "export" and f.label == target and (f.meta or {}).get("key") == export_key(asset)), None)
+    return f if f is not None and resolve(f).exists() else None
 
 
 def _safe(name: str) -> str:
@@ -118,11 +140,11 @@ def _input_for(db: Session, asset: Asset) -> dict:
         if not maps:
             raise ExportError("material has no textures to export")
         return {"input": None, "pbr": {**maps, "_name": asset.name}, "material_only": True}
-    if asset.kind == "animation" and blend and asset.parent_id:
-        # export the rig this action animates (actions travel with their armature)
+    if asset.kind == "animation":
+        # actions travel with their armature: export the rig this one animates, with only this action
         targets = linked(db, asset, "animates")
-        if targets and first(targets[0], "blend"):
-            return {"input": str(resolve(first(targets[0], "blend")))}
+        if targets and (first(targets[0], "blend") or first(targets[0], "source")):
+            return {**_input_for(db, targets[0]), "action": asset.name}
     if blend:
         return {"input": str(resolve(blend))}
     ue_exp = first(asset, "ue_export")
@@ -192,7 +214,7 @@ def export_asset(db: Session, asset: Asset, target: str, should_cancel=None) -> 
             out = _export_blender(db, asset, work, name, target, should_cancel)
         else:
             raise ExportError(f"unknown target {target}")
-        af = add_stored_file(asset, out, "export", name=out.name, label=target, meta={"fingerprint": asset.fingerprint})
+        af = add_stored_file(asset, out, "export", name=out.name, label=target, meta={"key": export_key(asset)})
         db.flush()
         return af
     finally:
@@ -272,6 +294,7 @@ def _export_blender(db, asset, work: Path, name: str, target: str, should_cancel
         pbr=spec.get("pbr"),
         material_only=spec.get("material_only", False),
         append=spec.get("append"),
+        action=spec.get("action"),
         should_cancel=should_cancel,
     )
     if not out.exists():

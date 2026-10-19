@@ -374,6 +374,8 @@ class Scanner:
                 claimed.add(r)
                 base, ch = split_texture_name(r.stem)
                 add_linked_file(a, r, "texture", label=ch or "")
+            # everything the model is made of (what an "original" download holds), not just the main file
+            a.size = sum(f.size or 0 for f in a.files if f.role in ("source", "sidecar", "texture"))
             model_assets.append((a, m, info))
             if m.suffix.lower() in (".glb", ".gltf"):
                 a.preview_file_id = None  # source itself is web-viewable; set below after flush
@@ -453,6 +455,8 @@ class Scanner:
             for pv in previews.get(m.parent, []) + previews.get(d, []):
                 add_linked_file(a, pv, "gallery")
             self._queue_preview(a, m)
+            if a.kind == "skeletal_model":
+                self._clip_assets(a, info.get("animations") or [])
 
         # --- loose images -> texture / hdri assets
         for img in loose:
@@ -585,6 +589,33 @@ class Scanner:
         elif ext in BLENDER_IMPORTABLE and blender.available():
             if not a.preview_file_id or a.meta.get("preview_fingerprint") != a.fingerprint:
                 self.queue("preview", a)
+
+    def _clip_assets(self, model: Asset, animations: list[dict]):
+        """One `animation` asset per clip of a rigged model file, like the actions split from a .blend."""
+        self.db.flush()
+        seen = set()
+        for clip in animations:
+            name = (clip.get("name") or "").split("|")[-1]  # FBX: "Armature|Walk"
+            if not name or f"clip:{name}" in seen:
+                continue
+            seen.add(f"clip:{name}")
+            c = self.upsert(
+                model.source_path,
+                sub_key=f"clip:{name}",
+                name=name,
+                kind="animation",
+                format=model.format,
+                parent_id=model.id,
+                fingerprint=model.fingerprint,
+                is_rigged=True,
+                is_animated=True,
+                meta={"clip": clip.get("name"), "duration": clip.get("duration"), "folder": (model.meta or {}).get("folder")},
+            )
+            self.link(c, model, "animates")
+        for c in self.db.query(Asset).filter(Asset.parent_id == model.id, Asset.sub_key.like("clip:%")):
+            if c.sub_key not in seen:
+                c.status = "missing"
+        share_thumbnail_with_clips(self.db, model)
 
     def _register_addon(self, path: Path, info: dict, prefix: str = ""):
         name = info.get("name") or path.stem
@@ -856,6 +887,14 @@ def _pack_for(source_path: str) -> str:
     if "!/" in source_path:
         return Path(parts[-1]).stem if parts else ""
     return parts[0] if len(parts) > 1 else ""
+
+
+def share_thumbnail_with_clips(db: Session, model: Asset) -> None:
+    """Clips split from a model file show the model's thumbnail (their page plays the clip on the
+    model, through the `animates` link); called again whenever the model gets a new thumbnail."""
+    for c in db.query(Asset).filter(Asset.parent_id == model.id, Asset.sub_key.like("clip:%")):
+        if not any(f.role == "thumbnail" for f in c.files):  # keep one captured for the clip itself
+            c.thumbnail_file_id = model.thumbnail_file_id
 
 
 def _blend_thumbnail(path: Path) -> bytes | None:

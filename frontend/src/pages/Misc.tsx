@@ -34,7 +34,7 @@ export function TagsPage() {
               <td className="row">
                 <button className="btn sm" onClick={() => { const n = prompt("Rename tag", t.name); n && n !== t.name && act(() => api.patch(`/api/tags/${t.id}`, { name: n })); }}><Icon name="edit" size={13} />Rename</button>
                 <button className="btn sm" onClick={() => { const n = prompt(`Merge "${t.name}" into which tag?`); n && act(() => api.patch(`/api/tags/${t.id}`, { merge_into: n })); }}>Merge</button>
-                <button className="btn sm ghost icon danger" onClick={() => confirm(`Delete tag "${t.name}"?`) && act(() => api.del(`/api/tags/${t.id}`))}><Icon name="trash" size={13} /></button>
+                <button className="btn sm ghost icon danger" title="Delete tag" onClick={() => confirm(`Delete tag "${t.name}"?`) && act(() => api.del(`/api/tags/${t.id}`))}><Icon name="trash" size={13} /></button>
               </td>
             </tr>
           ))}
@@ -132,7 +132,7 @@ export function IntegrationsPage() {
   const [status, setStatus] = useState<Status | null>(null);
   const [storage, setStorage] = useState<Storage | null>(null);
   const [addons, setAddons] = useState<AssetBrief[]>([]);
-  const origin = window.location.origin;
+  const origin = __DEV_API_ORIGIN__ ?? window.location.origin;
   useEffect(() => {
     api.get<Status>("/api/status").then(setStatus);
     api.get<Storage>("/api/maintenance/storage").then(setStorage).catch(() => undefined);
