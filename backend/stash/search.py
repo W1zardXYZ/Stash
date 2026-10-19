@@ -13,7 +13,7 @@ from .models import Asset
 def _meta_text(asset: Asset) -> str:
     m = asset.meta or {}
     parts: list[str] = []
-    for key in ("ue_class", "materials", "mesh_names", "animations", "textures", "collection", "catalog", "pack", "tree_type", "channel", "generator", "bl_info_name", "category"):
+    for key in ("ue_class", "materials", "mesh_names", "animations", "textures", "collection", "catalog", "pack", "tree_type", "channel", "channels", "generator", "bl_info_name", "category", "ue_package"):
         v = m.get(key)
         if isinstance(v, str):
             parts.append(v)
@@ -95,6 +95,27 @@ def fts_query(q: str) -> str | None:
     for n in neg:
         out += f" NOT {n}"
     return out
+
+
+def ranked_subquery(q: str):
+    """(rid, rank) rows for an FTS match - join it to filter and order by relevance in SQL.
+
+    Joining instead of `id IN (...)` keeps huge result sets under SQLite's parameter limit.
+    """
+    from sqlalchemy import column
+
+    fq = fts_query(q)
+    if fq is None:
+        return None
+    return (
+        text(
+            "SELECT rowid AS rid, bm25(asset_fts, 10.0, 6.0, 2.0, 1.0, 2.0, 1.0) AS rank "
+            "FROM asset_fts WHERE asset_fts MATCH :fq"
+        )
+        .bindparams(fq=fq)
+        .columns(column("rid"), column("rank"))
+        .subquery("fts")
+    )
 
 
 def search_ids(db: Session, q: str, limit: int = 100000) -> list[int] | None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Callable
@@ -56,9 +57,24 @@ def run_script(
     env = {k: v for k, v in os.environ.items() if k != "OCIO"}
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace", env=env)
     lines: list[str] = []
-    deadline = time.time() + (timeout or settings.blender_timeout)
+    # The timeout is an *inactivity* limit: big .blend files may legitimately take hours, but
+    # the scripts print progress per asset, so silence for this long means Blender is stuck.
+    limit = timeout or settings.blender_timeout
+    last_output = [time.time()]
+    timed_out = threading.Event()
+
+    def watchdog():
+        while proc.poll() is None:
+            if time.time() - last_output[0] > limit:
+                timed_out.set()
+                proc.kill()
+                return
+            time.sleep(2)
+
+    threading.Thread(target=watchdog, daemon=True).start()
     assert proc.stdout is not None
     for line in proc.stdout:
+        last_output[0] = time.time()
         # Cycles is chatty; keep only the useful lines
         if not line.startswith("Fra:"):
             lines.append(line.rstrip())
@@ -71,11 +87,10 @@ def run_script(
         if should_cancel and should_cancel():
             proc.kill()
             raise BlenderError("cancelled", "\n".join(lines))
-        if time.time() > deadline:
-            proc.kill()
-            raise BlenderError("Blender timed out", "\n".join(lines))
     rc = proc.wait()
     log = "\n".join(lines)
+    if timed_out.is_set():
+        raise BlenderError(f"Blender produced no output for {limit}s and was stopped", log)
     if rc != 0:
         tail = "\n".join(lines[-15:])
         raise BlenderError(f"Blender exited with code {rc}: {tail[-600:]}", log)

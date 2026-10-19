@@ -18,7 +18,7 @@ from ..images import normalize_thumbnail
 from ..jobs import enqueue
 from ..models import Asset, AssetFile, AssetLink, Job, Project, ProjectAsset, Source, Tag, asset_tags
 from ..processing import PRIORITY
-from ..search import index_asset, search_ids, unindex_asset
+from ..search import index_asset, ranked_subquery, unindex_asset
 from ..storage import resolve, store_bytes
 from .common import ser_asset_brief, ser_file, ser_job
 
@@ -60,9 +60,9 @@ def build_query(
     pack: str | None = None,
 ):
     query = db.query(Asset)
-    ids = search_ids(db, q) if q else None
-    if ids is not None:
-        query = query.filter(Asset.id.in_(ids))
+    ranked = ranked_subquery(q) if q else None
+    if ranked is not None:
+        query = query.join(ranked, ranked.c.rid == Asset.id)
     if kind:
         query = query.filter(Asset.kind.in_(_split(kind)))
     for t in _split(tags):
@@ -103,7 +103,7 @@ def build_query(
         query = query.filter(Asset.status.in_(_split(status)))
     else:
         query = query.filter(Asset.status != "missing")
-    return query, ids
+    return query, ranked
 
 
 def _duplicate_fingerprints(db: Session):
@@ -135,17 +135,14 @@ def list_assets(
     per_page: int = Query(60, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
-    query, ids = build_query(db, q, kind, tags, project, source, format, flags, parent, status, ue_class, pack)
+    query, ranked = build_query(db, q, kind, tags, project, source, format, flags, parent, status, ue_class, pack)
     total = query.count()
-    if q and ids is not None and sort == "relevance":
-        rank = {aid: i for i, aid in enumerate(ids)}
-        rows = query.options(selectinload(Asset.tags), selectinload(Asset.thumbnail)).all()
-        rows.sort(key=lambda a: rank.get(a.id, 1 << 30))
-        rows = rows[(page - 1) * per_page : page * per_page]
+    if ranked is not None and sort == "relevance":
+        query = query.order_by(ranked.c.rank.asc(), Asset.id.desc())
     else:
         col = SORTS.get(sort, Asset.updated_at)
         query = query.order_by(col.asc() if order == "asc" else col.desc(), Asset.id.desc())
-        rows = query.options(selectinload(Asset.tags), selectinload(Asset.thumbnail)).offset((page - 1) * per_page).limit(per_page).all()
+    rows = query.options(selectinload(Asset.tags), selectinload(Asset.thumbnail)).offset((page - 1) * per_page).limit(per_page).all()
     child_counts = dict(
         db.query(Asset.parent_id, func.count(Asset.id)).filter(Asset.parent_id.in_([a.id for a in rows])).group_by(Asset.parent_id).all()
     )

@@ -333,10 +333,7 @@ class Scanner:
         model_assets: list[tuple[Asset, Path, dict]] = []
         models_per_dir: dict[Path, int] = defaultdict(int)
         for m in models:
-            d = m.parent
-            if d.name.lower() in TEXTURE_DIR_NAMES:
-                d = d.parent
-            models_per_dir[d] += 1
+            models_per_dir[_anchor_dir(m.parent)] += 1
         for m in models:
             info = inspect_file(m) if m.stat().st_size < 600 * 1024 * 1024 else {}
             rigged = bool(info.get("bones") or info.get("skins"))
@@ -413,28 +410,42 @@ class Scanner:
         self.db.flush()
 
         # --- associate models with sets / textures in their folder
+        # Indexes keep this linear: packs often hold thousands of meshes and texture sets.
+        sets_under: dict[Path, list] = defaultdict(list)  # dir -> sets at or below it (3 levels)
+        sets_at: dict[Path, list] = defaultdict(list)
+        set_by_file: dict[str, Asset] = {}
+        for (gdir, base), sa in set_assets.items():
+            entry = (gdir, base, sa)
+            sets_at[gdir].append(entry)
+            for anc in [gdir, *list(gdir.parents)[:3]]:
+                sets_under[anc].append(entry)
+            for f in sa.files:
+                if f.role == "texture":
+                    set_by_file[f.path] = sa
         for a, m, info in model_assets:
-            d = m.parent
-            if d.name.lower() in TEXTURE_DIR_NAMES:
-                d = d.parent
+            d = _anchor_dir(m.parent)
             stem = re.sub(r"^(sm|sk|skm|s)_", "", m.stem.lower())
             stem_core = re.sub(r"[_\-.\s]*(lod\d+|low|high|hi|lo|\d+)$", "", stem)
-            linked_any = False
             texture_files = {f.path for f in a.files if f.role == "texture"}
-            for (gdir, base), sa in set_assets.items():
-                if gdir != d and gdir.parent != d and d not in gdir.parents:
-                    continue
+            # sets referenced by the model's own textures, wherever they live
+            linked = {id(sa): sa for sa in (set_by_file.get(t) for t in texture_files) if sa is not None}
+            candidates = list(sets_under.get(d, []))
+            for anc in list(d.parents)[:2]:  # sets at the pack root next to Meshes/
+                candidates += sets_at.get(anc, [])
+            lone_model = models_per_dir[d] == 1
+            for gdir, base, sa in candidates:
                 base_l = re.sub(r"^t_", "", base.lower())
-                related = base_l and (base_l in stem or stem_core in base_l or stem_core.startswith(base_l))
-                set_files = {f.path for f in sa.files if f.role == "texture"}
-                if related or set_files & texture_files or (models_per_dir[d] == 1 and sum(1 for k in set_assets if k[0] == gdir) <= 3):
-                    self.link(a, sa, "uses_material")
-                    linked_any = True
-                    if not texture_files:
-                        for f in sa.files:
-                            if f.role == "texture":
-                                add_linked_file(a, Path(f.path), "texture", label=f.label)
-            if linked_any:
+                # SM_Rock_01 <-> T_Rock_01_*, SM_Chair_LOD0 <-> T_Chair_*; but not Rock_01 <-> Rock_02
+                related = bool(base_l) and (base_l in (stem, stem_core) or stem.startswith(base_l + "_"))
+                if related or (lone_model and len(sets_at[gdir]) <= 3):
+                    linked[id(sa)] = sa
+            for sa in linked.values():
+                self.link(a, sa, "uses_material")
+                if not texture_files:
+                    for f in sa.files:
+                        if f.role == "texture":
+                            add_linked_file(a, Path(f.path), "texture", label=f.label)
+            if linked:
                 a.has_textures = True
             for pv in previews.get(m.parent, []) + previews.get(d, []):
                 add_linked_file(a, pv, "gallery")
@@ -520,15 +531,21 @@ class Scanner:
 
     def _resolve_texture(self, model: Path, ref: str, images: list[Path]) -> Path | None:
         ref_norm = ref.replace("\\", "/")
-        cand = (model.parent / ref_norm)
-        if cand.exists():
-            return cand.resolve() if cand.resolve() in images else cand
+        if not re.match(r"^[A-Za-z]:/", ref_norm) and not ref_norm.startswith("/"):
+            cand = model.parent / ref_norm
+            if cand.exists():
+                return cand
         name = Path(ref_norm).name.lower()
         if not name:
             return None
+        if getattr(self, "_img_index_src", None) is not images:
+            index: dict[str, list[Path]] = defaultdict(list)
+            for img in images:
+                index[img.name.lower()].append(img)
+            self._img_index, self._img_index_src = index, images
         # same basename anywhere under the model's folder (or parent) - asset packs move files around
         best = None
-        for img in images:
+        for img in self._img_index.get(name, []):
             if img.name.lower() == name:
                 if model.parent in img.parents or img.parent == model.parent:
                     return img
@@ -752,6 +769,16 @@ class Scanner:
                             self.link(a, mesh, "animates")
         for a, _ in parsed:
             index_asset(self.db, a)
+
+
+MODEL_DIR_NAMES = {"meshes", "mesh", "models", "model", "fbx", "obj", "gltf", "glb", "geometry", "static", "staticmeshes", "skeletal", "skeletalmeshes", "source", "sourcefiles"}
+
+
+def _anchor_dir(d: Path) -> Path:
+    """The folder an asset 'belongs to': step out of Meshes/, Textures/, FBX/ style subfolders."""
+    if d.name.lower() in TEXTURE_DIR_NAMES or d.name.lower() in MODEL_DIR_NAMES:
+        return d.parent
+    return d
 
 
 def _pack_for(source_path: str) -> str:
