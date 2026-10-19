@@ -292,6 +292,8 @@ export default function Library({ projectId, header }: { projectId?: number; hea
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
             {projectId && <button className="btn sm" onClick={() => bulk({ remove_from_project: projectId }, "Removed from project")}>Remove from project</button>}
+            <button className="btn sm" title="Send to Blender" onClick={() => api.post("/api/deliveries", { app: "blender", asset_ids: [...selected] }).then(() => toast("Sent to Blender", "ok"))}><Icon name="blender" size={14} /></button>
+            <button className="btn sm" title="Send to Unreal" onClick={() => api.post("/api/deliveries", { app: "unreal", asset_ids: [...selected] }).then(() => toast("Sent to Unreal", "ok"))}><Icon name="unreal" size={14} /></button>
             <button className="btn sm" onClick={() => bulk({ favorite: true }, "Marked as favorite")}><Icon name="star" size={14} /></button>
             <button className="btn sm danger" onClick={() => confirm(`Remove ${selected.size} assets from the library? Files on disk are not touched.`) && bulk({ delete: true }, "Removed")}>
               <Icon name="trash" size={14} />

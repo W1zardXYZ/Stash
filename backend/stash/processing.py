@@ -239,7 +239,8 @@ def job_preview(ctx: JobContext):
             return {}
         src = next((f for f in asset.files if f.role == "source"), None)
         ue_exp = next((f for f in asset.files if f.role == "ue_export"), None)
-        src = ue_exp or src
+        # assets pushed from Blender may only carry a GLB preview: render from that
+        src = ue_exp or src or asset.preview
         if src is None:
             return {}
         path = resolve(src)

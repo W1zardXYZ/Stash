@@ -227,6 +227,12 @@ def _plausible_name(s: str) -> bool:
     return 0 < len(s) < 1024 and all(31 < ord(c) < 0x10000 for c in s)
 
 
+# UE5 object versions where the summary layout changes (see EUnrealEngineObjectUE5Version).
+# Unversioned (cooked) packages store 0, so for those we try each layout and keep the one
+# whose name and import tables decode cleanly.
+_UE5_LAYOUT_CANDIDATES = (1018, 1016, 1015, 1014, 1012, 1008, 1003, 1000)
+
+
 def _parse_header(data: bytes, info: UAssetInfo) -> None:
     r = _Reader(data)
     if r.u32() != PACKAGE_TAG:
@@ -239,47 +245,63 @@ def _parse_header(data: bytes, info: UAssetInfo) -> None:
     ue4 = r.i32()
     ue5 = r.i32() if legacy <= -8 else 0
     r.i32()  # licensee
+    # UE 5.6+ (legacy -9) writes SavedHash + TotalHeaderSize before the custom versions
+    hash_first = legacy <= -9
+    if hash_first:
+        r.skip(20)
+        r.i32()
     if legacy <= -2:
         _parse_custom_versions(r, legacy)
     info.file_version_ue4, info.file_version_ue5 = ue4, ue5
     after_custom = r.o
-    size = len(data)
 
+    if ue4 == 0 and ue5 == 0:  # unversioned
+        layouts = [(522, c) for c in _UE5_LAYOUT_CANDIDATES] if legacy <= -8 else [(522, 0)]
+    else:
+        layouts = [(ue4, ue5)]
     last_err: Exception | None = None
-    # Candidate layouts: with/without the UE 5.5+ SavedHash (20 bytes) before TotalHeaderSize.
-    for saved_hash in ((ue5 >= 1016, ue5 < 1016) if ue5 else (False,)):
-        try:
-            r.o = after_custom
-            if saved_hash:
-                r.skip(20)
-            r.i32()  # TotalHeaderSize
-            package_name = r.fstring()
-            flags = r.u32()
-            name_count = r.i32()
-            name_offset = r.i32()
-            if not (0 < name_count < 2_000_000 and 0 < name_offset < size):
-                raise ValueError("bad name table")
-            names = _read_names(data, name_offset, name_count, ue4)
-            if not all(_plausible_name(n) for n in names[: min(50, len(names))]):
-                raise ValueError("implausible names")
-            info.names = names
-            info.package_name = package_name if package_name.startswith("/") else ""
-            editor_only_filtered = bool(flags & PKG_FILTER_EDITOR_ONLY)
-            if ue5 >= 1008:
-                r.skip(8)  # soft object paths count/offset
-            if not editor_only_filtered and ue4 >= 516:
-                r.fstring()  # LocalizationId
-            if ue4 >= 459:
-                r.skip(8)  # gatherable text data
-            r.i32()  # export count
-            r.i32()  # export offset
-            import_count = r.i32()
-            import_offset = r.i32()
-            _parse_imports(data, info, names, import_count, import_offset, ue4, ue5, editor_only_filtered)
-            return
-        except Exception as e:  # try the next layout
-            last_err = e
+    for eff_ue4, eff_ue5 in layouts:
+        variants = ((None,) if hash_first else (eff_ue5 >= 1016, eff_ue5 < 1016) if eff_ue5 else (False,))
+        for saved_hash in variants:
+            try:
+                _parse_summary_tail(data, info, after_custom, eff_ue4, eff_ue5, saved_hash)
+                return
+            except Exception as e:  # try the next layout
+                last_err = e
     raise ValueError(f"header parse failed: {last_err}")
+
+
+def _parse_summary_tail(data: bytes, info: UAssetInfo, offset: int, ue4: int, ue5: int, saved_hash: bool | None) -> None:
+    """saved_hash None = hash and header size were already read before the custom versions."""
+    size = len(data)
+    r = _Reader(data, offset)
+    if saved_hash:
+        r.skip(20)
+    if saved_hash is not None:
+        r.i32()  # TotalHeaderSize
+    package_name = r.fstring()
+    flags = r.u32()
+    name_count = r.i32()
+    name_offset = r.i32()
+    if not (0 < name_count < 2_000_000 and 0 < name_offset < size):
+        raise ValueError("bad name table")
+    names = _read_names(data, name_offset, name_count, ue4)
+    if not all(_plausible_name(n) for n in names[: min(50, len(names))]):
+        raise ValueError("implausible names")
+    editor_only_filtered = bool(flags & PKG_FILTER_EDITOR_ONLY)
+    if ue5 >= 1008:
+        r.skip(8)  # soft object paths count/offset
+    if not editor_only_filtered and ue4 >= 516:
+        r.fstring()  # LocalizationId
+    if ue4 >= 459:
+        r.skip(8)  # gatherable text data
+    r.i32()  # export count
+    r.i32()  # export offset
+    import_count = r.i32()
+    import_offset = r.i32()
+    _parse_imports(data, info, names, import_count, import_offset, ue4, ue5, editor_only_filtered)
+    info.names = names
+    info.package_name = package_name if package_name.startswith("/") else ""
 
 
 def _fname(data: bytes, off: int, names: list[str]) -> str:
@@ -317,7 +339,7 @@ def _parse_imports(data, info, names, count, offset, ue4, ue5, filtered):
         raise ValueError("could not decode import table")
     classes, deps, engine_deps = [], [], []
     for class_package, class_name, _outer, obj in imports:
-        if class_name in ("Class", "BlueprintGeneratedClass", "WidgetBlueprintGeneratedClass", "AnimBlueprintGeneratedClass"):
+        if class_name == "Class":
             classes.append(obj)
         elif class_name == "Package" and obj.startswith("/") and not obj.startswith("/Script/"):
             (engine_deps if obj.startswith("/Engine/") else deps).append(obj)
@@ -384,6 +406,12 @@ def parse_uasset(path: Path, read_limit: int = 64 * 1024 * 1024) -> UAssetInfo:
         info.asset_class, info.class_source = "World", "extension"
     else:
         cls = next((c for c in CLASS_PRIORITY if c in info.class_imports), "")
+        if not cls and "BlueprintGeneratedClass" in info.class_imports:
+            cls = "Blueprint"
+        if not cls and "WidgetBlueprintGeneratedClass" in info.class_imports:
+            cls = "WidgetBlueprint"
+        if not cls and "AnimBlueprintGeneratedClass" in info.class_imports:
+            cls = "AnimBlueprint"
         if cls:
             info.asset_class, info.class_source = cls, "header"
         elif info.class_imports:

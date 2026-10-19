@@ -350,10 +350,24 @@ function ExportPanel({ asset, onDone }: { asset: AssetDetail; onDone: () => void
     }
   };
 
+  const send = async (app: "blender" | "unreal") => {
+    try {
+      await api.post("/api/deliveries", { app, asset_ids: [asset.id] });
+      toast(`Sent to ${app === "blender" ? "Blender" : "Unreal"} – it imports on the next poll (or click Receive in the plugin)`, "ok");
+    } catch (e: any) {
+      toast(e.message, "error");
+    }
+  };
+
   if (!asset.targets.length) return <div className="section muted">No export targets available for this asset.</div>;
 
   return (
     <div className="section">
+      <h5>Send to an open app</h5>
+      <div className="row" style={{ marginBottom: 16 }}>
+        <button className="btn" onClick={() => send("blender")}><Icon name="blender" size={15} />Send to Blender</button>
+        <button className="btn" onClick={() => send("unreal")}><Icon name="unreal" size={15} />Send to Unreal</button>
+      </div>
       <h5>Download as</h5>
       {asset.targets.map((t) => {
         const j = jobs[t];

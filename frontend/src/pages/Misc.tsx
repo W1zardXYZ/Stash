@@ -155,7 +155,7 @@ export function IntegrationsPage() {
             Editor plugin (Python, UE 5.1+). <b>Export:</b> right-click assets in the Content Browser → Stash → Push to Stash (FBX/glTF + textures + thumbnails, matched to the scanned .uasset).
             <b> Import:</b> Tools → Stash → Import from Stash (FBX/glTF import + automatic material instances) or drop native packages into Content.
           </p>
-          <span className="small">Copy <code>StashBridge</code> into <code>YourProject/Plugins/</code>, enable “Python Editor Script Plugin”, then set the URL in Project Settings → Plugins → Stash.</span>
+          <span className="small">Unzip <code>StashBridge</code> into <code>YourProject/Plugins/</code> and restart the editor (it enables the Python plugin). Then <b>Stash → Edit settings…</b> opens <code>Config/StashBridge.json</code> – set <code>server_url</code> to:</span>
           <CopyField value={origin} />
         </div>
         <div className="panel panel-pad col">

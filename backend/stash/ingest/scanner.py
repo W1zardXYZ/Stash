@@ -646,6 +646,7 @@ class Scanner:
         projects[project_name] = {"path": str(root), **meta}
         self.source.meta = {**(self.source.meta or {}), "unreal_projects": projects}
         content = root / "Content"
+        self._engine_hint = meta.get("engine_association", "") if re.fullmatch(r"\d+\.\d+", meta.get("engine_association", "")) else ""
         if content.is_dir():
             self.scan_unreal_content(content, "/Game", project_name, prefix)
         plugins = root / "Plugins"
@@ -664,6 +665,7 @@ class Scanner:
             info = parse_uasset(f, read_limit=16 * 1024 * 1024)
             pkg = package_path_for(f, content, mount)
             info.package_name = pkg
+            info.dependencies = [d for d in info.dependencies if d != pkg]
             parts = Path(pkg).parts
             pack = parts[2] if len(parts) > 3 else ""
             fp = f"{f.stat().st_size}-{int(f.stat().st_mtime)}"
@@ -676,7 +678,14 @@ class Scanner:
                 fingerprint=fp,
                 is_rigged=info.asset_class in ("SkeletalMesh", "Skeleton"),
                 is_animated=info.kind == "animation",
-                meta={**info.to_meta(), "ue_project": project_name, "ue_mount": mount, "pack": pack, "folder": str(Path(pkg).parent)},
+                meta={
+                    **info.to_meta(),
+                    "ue_engine_version": info.engine_version or getattr(self, "_engine_hint", ""),
+                    "ue_project": project_name,
+                    "ue_mount": mount,
+                    "pack": pack,
+                    "folder": str(Path(pkg).parent),
+                },
             )
             for pf in package_files(f):
                 add_linked_file(a, pf, "source" if pf == f else "sidecar")

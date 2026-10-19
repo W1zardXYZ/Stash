@@ -1,0 +1,18 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1.0",
+  "FriendlyName": "Stash Bridge",
+  "Description": "Push assets to and pull assets from a self-hosted Stash 3D asset library.",
+  "Category": "Editor",
+  "CreatedBy": "Stash",
+  "CreatedByURL": "https://github.com/w1zardxyz/stash",
+  "CanContainContent": true,
+  "IsBetaVersion": true,
+  "Installed": false,
+  "Plugins": [
+    { "Name": "PythonScriptPlugin", "Enabled": true },
+    { "Name": "EditorScriptingUtilities", "Enabled": true },
+    { "Name": "GLTFExporter", "Enabled": true, "Optional": true }
+  ]
+}

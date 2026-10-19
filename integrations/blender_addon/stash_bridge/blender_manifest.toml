@@ -1,0 +1,16 @@
+schema_version = "1.0.0"
+
+id = "stash_bridge"
+version = "0.1.0"
+name = "Stash Bridge"
+tagline = "Browse, import and push assets to your self-hosted Stash library"
+maintainer = "Stash"
+type = "add-on"
+website = "https://github.com/w1zardxyz/stash"
+tags = ["Import-Export", "Pipeline"]
+blender_version_min = "4.2.0"
+license = ["SPDX:MIT"]
+
+[permissions]
+network = "Talk to your Stash server to search, download and upload assets"
+files = "Download assets to a cache folder and export selections for upload"

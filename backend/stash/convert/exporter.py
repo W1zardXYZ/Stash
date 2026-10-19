@@ -203,7 +203,7 @@ def _export_original(asset: Asset, work: Path, name: str) -> Path:
         raise ExportError("no source files")
     if len(files) == 1:
         p = resolve(files[0])
-        dest = work / p.name
+        dest = work / (files[0].name or p.name)  # stored files live under their hash
         shutil.copyfile(p, dest)
         return dest
     src = resolve(files[0])
@@ -215,10 +215,13 @@ def _export_original(asset: Asset, work: Path, name: str) -> Path:
             p = resolve(f)
             if not p.exists():
                 continue
-            try:
-                arc = p.relative_to(base).as_posix()
-            except ValueError:
-                arc = f"textures/{p.name}"
+            if f.storage == "store":
+                arc = f.name if f.role == "source" else f"textures/{f.name}"
+            else:
+                try:
+                    arc = p.relative_to(base).as_posix()
+                except ValueError:
+                    arc = f"textures/{p.name}"
             if arc in seen:
                 continue
             seen.add(arc)

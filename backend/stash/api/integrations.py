@@ -11,13 +11,14 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..db import get_db
 from ..jobs import enqueue
-from ..models import Asset, AssetFile, Source, Tag
+from ..models import Asset, AssetFile, Delivery, Source, Tag, utcnow
 from ..processing import PRIORITY
 from ..search import index_asset
 from ..storage import add_stored_file, resolve, sha256_file
@@ -151,6 +152,74 @@ def _ingest_entry(db: Session, source: Source, root: Path, origin: str, project:
     elif not thumb and (glb or mesh):
         enqueue("preview", {"render_only": True}, asset_id=asset.id, priority=PRIORITY["preview"], db=db)
     return {"id": asset.id, "name": asset.name, "matched": matched}
+
+
+# ----------------------------------------------------------------------------- deliveries ("send to Blender/Unreal")
+
+class DeliveryBody(BaseModel):
+    app: str
+    asset_ids: list[int]
+    target: str = ""
+
+
+@router.post("/deliveries")
+def create_deliveries(body: DeliveryBody, db: Session = Depends(get_db)):
+    if body.app not in ("blender", "unreal"):
+        raise HTTPException(400, "app must be blender or unreal")
+    ids = []
+    for aid in body.asset_ids:
+        if db.get(Asset, aid) is None:
+            continue
+        d = Delivery(app=body.app, asset_id=aid, target=body.target)
+        db.add(d)
+        db.flush()
+        ids.append(d.id)
+    db.commit()
+    return {"ids": ids}
+
+
+@router.get("/deliveries")
+def list_deliveries(app: str | None = None, status: str = "pending", limit: int = 50, db: Session = Depends(get_db)):
+    q = db.query(Delivery)
+    if app:
+        q = q.filter(Delivery.app == app)
+    if status != "all":
+        q = q.filter(Delivery.status == status)
+    out = []
+    for d in q.order_by(Delivery.id).limit(limit):
+        a = db.get(Asset, d.asset_id)
+        out.append({
+            "id": d.id, "app": d.app, "asset_id": d.asset_id, "target": d.target, "status": d.status,
+            "message": d.message, "created_at": d.created_at.isoformat() if d.created_at else None,
+            "asset": {"id": a.id, "uid": a.uid, "name": a.name, "kind": a.kind} if a else None,
+        })
+    return out
+
+
+class DeliveryAck(BaseModel):
+    status: str = "delivered"
+    message: str = ""
+    client: str = ""
+
+
+@router.post("/deliveries/{delivery_id}/ack")
+def ack_delivery(delivery_id: int, body: DeliveryAck, db: Session = Depends(get_db)):
+    d = db.get(Delivery, delivery_id)
+    if d is None:
+        raise HTTPException(404, "delivery not found")
+    d.status = body.status if body.status in ("delivered", "failed", "pending") else "delivered"
+    d.message = body.message[:2000]
+    d.client = body.client[:200]
+    d.delivered_at = utcnow()
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/deliveries")
+def clear_deliveries(db: Session = Depends(get_db)):
+    n = db.query(Delivery).filter(Delivery.status != "pending").delete(synchronize_session=False)
+    db.commit()
+    return {"deleted": n}
 
 
 # ----------------------------------------------------------------------------- Blender extension repository
