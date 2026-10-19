@@ -79,7 +79,7 @@ export default function Sources() {
                 </div>
                 {projects.length > 0 && <div className="small muted">Unreal: {projects.join(", ")}</div>}
                 {res?.missing > 0 && <div className="small" style={{ color: "var(--warn)" }}>{res.missing} files missing since last scan</div>}
-                <div className="row">
+                <div className="row wrap" style={{ gap: 6 }}>
                   <Link className="btn sm" to={`/?source=${s.id}`}><Icon name="library" size={13} />Browse</Link>
                   <button className="btn sm" onClick={() => scan(s)} disabled={s.status === "scanning"}><Icon name="refresh" size={13} />Rescan</button>
                   <button className="btn sm" onClick={async () => { const r = await api.post<{ jobs: number }>(`/api/sources/${s.id}/extract-all`); toast(`${r.jobs} Blender jobs queued`, "ok"); }} title="Re-run Blender extraction and previews for everything">
