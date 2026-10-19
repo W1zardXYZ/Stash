@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { AssetBrief, Facets, KIND_LABELS, Project, Source, api, formatCount, getStatus, qs } from "../api";
 import { Icon, KIND_ICON } from "../components/Icon";
 import { AssetCard, Modal, useToast } from "../components/ui";
+import { PackBanner } from "./Packs";
 
 const PER_PAGE = 80;
 const KIND_ORDER = ["model", "skeletal_model", "animation", "material", "texture", "hdri", "node_group", "scene", "blueprint", "unreal_asset", "addon", "audio", "other"];
@@ -238,6 +239,7 @@ export default function Library({ projectId, header }: { projectId?: number; hea
 
       <section className="lib-main" style={{ position: "relative" }}>
         {header}
+        {pack && !projectId && <PackBanner name={pack} />}
         <div className="toolbar">
           <button className="btn icon ghost" onClick={() => setShowSide(!showSide)} title="Filters"><Icon name="filter" size={16} /></button>
           <div className="search">

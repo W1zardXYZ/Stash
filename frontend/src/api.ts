@@ -83,7 +83,33 @@ export interface AssetDetail extends AssetBrief {
   exports: AssetFile[];
   jobs: Job[];
   created_at: string | null;
+  pack: { name: string; description: string; keywords: string[] } | null;
 }
+
+export interface PackInfo {
+  name: string;
+  count: number;
+  description: string;
+  keywords: string[];
+  meta: { by?: string; model?: string; [k: string]: any };
+  updated_at: string | null;
+  cover: string | null;
+}
+
+export interface PackDetail extends PackInfo {
+  kinds: Record<string, number>;
+  formats: Record<string, number>;
+  tags: string[];
+  auto_tags: { tag: string; weight: number }[];
+  folders: { path: string; count: number }[];
+  names: string[];
+  sources: { id: number; name: string }[];
+  ue_project: string | null;
+  samples: (AssetBrief & { auto_tags: string[]; description: string })[];
+  gallery: string[];
+}
+
+export const packUrl = (name: string) => `/api/packs/${name.split("/").map(encodeURIComponent).join("/")}`;
 
 export interface Source {
   id: number;
@@ -175,6 +201,7 @@ export const api = {
   get: <T>(url: string) => request<T>("GET", url),
   post: <T>(url: string, body?: unknown) => request<T>("POST", url, body ?? {}),
   patch: <T>(url: string, body: unknown) => request<T>("PATCH", url, body),
+  put: <T>(url: string, body: unknown) => request<T>("PUT", url, body),
   del: <T>(url: string) => request<T>("DELETE", url),
 };
 

@@ -303,3 +303,12 @@ def unreal_plugin():
     if not src.is_dir():
         raise HTTPException(404, "plugin not bundled")
     return Response(_zip_tree(src, "StashBridge"), media_type="application/zip", headers={"Content-Disposition": 'attachment; filename="StashBridge.zip"'})
+
+
+@router.get("/integrations/stash_describe.py")
+def describe_script():
+    """Batch pack/asset describer for LM Studio (see docs/BATCH.md) - runs on the machine with the model."""
+    src = INTEGRATIONS_DIR / "tools" / "stash_describe.py"
+    if not src.is_file():
+        raise HTTPException(404, "script not bundled")
+    return Response(src.read_bytes(), media_type="text/x-python", headers={"Content-Disposition": 'attachment; filename="stash_describe.py"'})

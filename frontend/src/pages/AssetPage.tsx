@@ -284,7 +284,7 @@ export default function AssetPage() {
                 {meta.ue_project && (<><dt>UE project</dt><dd>{meta.ue_project}</dd></>)}
                 {meta.sidecar?.name && (<><dt>Vendor name</dt><dd>{meta.sidecar.name}{meta.sidecar.id ? ` (${meta.sidecar.id})` : ""}</dd></>)}
                 {meta.sidecar?.properties && Object.entries(meta.sidecar.properties as Record<string, unknown>).slice(0, 8).map(([k, v]) => (<Fragment key={k}><dt>{k}</dt><dd>{String(v)}</dd></Fragment>))}
-                {meta.pack && (<><dt>Pack</dt><dd><Link to={`/?pack=${encodeURIComponent(meta.pack)}`}>{meta.pack}</Link></dd></>)}
+                {meta.pack && (<><dt>Pack</dt><dd><Link to={`/?pack=${encodeURIComponent(meta.pack)}`}>{meta.pack}</Link>{a.pack?.description && <div className="muted small" style={{ marginTop: 3 }}>{a.pack.description}</div>}</dd></>)}
                 {meta.blender_version && (<><dt>Blender</dt><dd>{meta.blender_version}</dd></>)}
                 {meta.scene_stats && (<><dt>File contents</dt><dd>{Object.entries(meta.scene_stats).map(([k, v]) => `${v} ${k}`).join(" · ")}</dd></>)}
                 {meta.addon && (

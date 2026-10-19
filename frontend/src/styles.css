@@ -325,6 +325,9 @@ input[type="range"] { accent-color: var(--accent); }
 .proj-card .covers { display: grid; grid-template-columns: 1fr 1fr; aspect-ratio: 2; background: var(--panel-2); }
 .proj-card .covers img { width: 100%; height: 100%; object-fit: contain; aspect-ratio: 1; background: var(--bg-2); }
 .proj-card .covers.one { grid-template-columns: 1fr; }
+.pack-desc { margin: 6px 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.pack-banner { align-items: flex-start; gap: 10px; }
+.pack-banner > svg { margin-top: 2px; color: var(--accent); }
 pre.log { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; max-height: 360px; overflow: auto; white-space: pre-wrap; word-break: break-all; }
 .toast-wrap { position: fixed; bottom: 18px; right: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 200; }
 .toast { background: var(--panel-2); border: 1px solid var(--border-2); border-radius: 10px; padding: 10px 14px; box-shadow: var(--shadow); max-width: 380px; font-size: 13px; }

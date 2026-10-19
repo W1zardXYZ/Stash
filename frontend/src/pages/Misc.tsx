@@ -172,6 +172,14 @@ export function IntegrationsPage() {
           <CopyField value={`${origin}/api/blender/extensions/index.json`} />
         </div>
         <div className="panel panel-pad col">
+          <div className="row"><Icon name="sparkle" size={22} /><strong className="grow">Pack descriptions with a local LLM</strong><a className="btn sm primary" href="/api/integrations/stash_describe.py"><Icon name="download" size={13} />Script</a></div>
+          <p className="muted small" style={{ margin: 0 }}>
+            Runs on the computer with LM Studio (Python 3, nothing to install). It sends each undescribed pack's summary and a few previews to the loaded model
+            and saves a description + keywords to the pack (see <b>Packs</b>). <code>--engine clip</code> summarises the on-device CLIP tags instead, no LLM needed.
+          </p>
+          <CopyField value={`python3 stash_describe.py --stash ${origin}${status?.auth ? " --token YOUR_PASSWORD" : ""} packs`} />
+        </div>
+        <div className="panel panel-pad col">
           <div className="row"><Icon name="settings" size={22} /><strong className="grow">Server</strong></div>
           {status && (
             <dl className="kv">

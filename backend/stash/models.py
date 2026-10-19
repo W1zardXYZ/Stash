@@ -186,6 +186,23 @@ class Project(Base):
     items: Mapped[list["ProjectAsset"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
 
+class Pack(Base):
+    """Notes on an asset pack. Assets name their pack in `meta.pack` (the top-level folder, zip or
+    Unreal Content/ folder they came from); a row here only exists once a pack has been described."""
+
+    __tablename__ = "packs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(300), unique=True, index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    # keywords searched together with every asset of the pack (not applied as asset tags)
+    keywords: Mapped[list] = mapped_column(JSON, default=list)
+    # who wrote the description: {"by": "user" | "lmstudio" | "clip", "model": ...}
+    meta: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class ProjectAsset(Base):
     __tablename__ = "project_assets"
 

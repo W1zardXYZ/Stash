@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import __version__, jobs, processing  # noqa: F401  (registers job handlers)
-from .api import assets, integrations, library
+from .api import assets, integrations, library, packs
 from .api.common import SESSION_COOKIE, auth_enabled, is_authorized, session_token
 from .config import settings
 from .db import init_engine
@@ -66,6 +66,7 @@ def me(request: Request):
 app.include_router(assets.router, prefix="/api")
 app.include_router(library.router, prefix="/api")
 app.include_router(integrations.router, prefix="/api")
+app.include_router(packs.router, prefix="/api")
 
 
 # ------------------------------------------------------------------ web UI

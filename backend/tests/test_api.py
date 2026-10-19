@@ -214,3 +214,45 @@ def test_storage_cleanup(app_client, run_jobs, monkeypatch, tmp_path):
     run_jobs()
     files = c.get(f"/api/assets/{asset['id']}").json()["exports"]
     assert files == []  # evicted straight away by the 1-byte cap
+
+
+def test_packs(app_client, run_jobs):
+    c = app_client
+    packs = {p["name"]: p for p in c.get("/api/packs").json()}
+    assert {"Crate", "Characters", "barrels"} <= set(packs), packs.keys()
+    assert packs["Crate"]["count"] >= 1 and packs["Crate"]["description"] == ""
+
+    detail = c.get("/api/packs/Crate").json()
+    assert "SM_Crate" in detail["names"] and detail["kinds"]["model"] == 1
+    assert detail["sources"] and detail["gallery"]  # preview.png shipped next to the crate
+    assert c.get("/api/packs/Surfaces").json()["samples"][0]["name"] == "wood_floor"
+    assert c.get("/api/packs/NoSuchPack").status_code == 404
+
+    # a pack description makes every asset of the pack findable, without touching the assets
+    assert "SM_Crate" not in _assets(c, q="splintered")
+    r = c.put("/api/packs/Crate", json={"description": "Splintered wooden shipping crates.", "keywords": ["Cargo", "cargo", "dock"],
+                                         "meta": {"by": "lmstudio", "model": "test"}})
+    assert r.status_code == 200 and r.json()["keywords"] == ["cargo", "dock"]
+    assert "SM_Crate" in _assets(c, q="splintered")
+    assert "SM_Crate" in _assets(c, q="dock")
+    assert "Hero Knight" not in _assets(c, q="dock")
+    assert {p["name"] for p in c.get("/api/packs", params={"described": True}).json()} == {"Crate"}
+    asset = c.get(f"/api/assets/{_assets(c, q='SM_Crate')['SM_Crate']['id']}").json()
+    assert asset["pack"]["description"].startswith("Splintered")
+
+    # survives a full reindex, goes away when deleted
+    c.post("/api/maintenance/reindex")
+    run_jobs()
+    assert "SM_Crate" in _assets(c, q="splintered")
+    c.delete("/api/packs/Crate")
+    assert "SM_Crate" not in _assets(c, q="splintered")
+
+
+def test_scaled_image(app_client):
+    c = app_client
+    detail = c.get("/api/packs/Crate").json()
+    r = c.get(detail["gallery"][0], params={"max": 32})
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+    from PIL import Image
+
+    assert max(Image.open(io.BytesIO(r.content)).size) <= 32

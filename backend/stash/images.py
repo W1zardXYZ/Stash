@@ -60,6 +60,26 @@ def make_thumbnail(path: Path, size: int | None = None) -> bytes | None:
         return None
 
 
+def scaled_jpeg(path: Path, size: int) -> bytes:
+    """Any image as an RGB JPEG no larger than size x size (transparent areas on mid grey)."""
+    try:
+        with Image.open(path) as im:
+            im.draft("RGB", (size * 2, size * 2))
+            if im.mode in ("I;16", "I;16B", "I", "F"):
+                im = im.convert("I").point(lambda v: v / 256).convert("L")
+            im = im.convert("RGBA")
+            im.thumbnail((size, size), Image.Resampling.LANCZOS)
+            bg = Image.new("RGB", im.size, (128, 128, 128))
+            bg.paste(im, mask=im.getchannel("A"))
+            buf = io.BytesIO()
+            bg.save(buf, "JPEG", quality=85)
+            return buf.getvalue()
+    except Exception as e:
+        from fastapi import HTTPException
+
+        raise HTTPException(415, f"can't read image: {e}") from e
+
+
 def normalize_thumbnail(data: bytes, size: int | None = None) -> tuple[bytes, str]:
     """Re-encode an arbitrary image blob (e.g. a uasset thumbnail or a browser capture)."""
     size = size or settings.thumbnail_size

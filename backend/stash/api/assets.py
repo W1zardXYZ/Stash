@@ -7,16 +7,16 @@ import mimetypes
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..convert.exporter import available_targets
 from ..db import get_db
-from ..images import normalize_thumbnail
+from ..images import PIL_FORMATS, normalize_thumbnail, scaled_jpeg
 from ..jobs import enqueue
-from ..models import Asset, AssetFile, AssetLink, Job, Project, ProjectAsset, Source, Tag, asset_tags
+from ..models import Asset, AssetFile, AssetLink, Job, Pack, Project, ProjectAsset, Source, Tag, asset_tags
 from ..processing import PRIORITY, queue_embeddings
 from ..search import index_asset, ranked_subquery, unindex_asset
 from ..storage import resolve, store_bytes
@@ -291,7 +291,10 @@ def get_asset(asset_id: int, db: Session = Depends(get_db)):
     children = db.query(Asset).filter(Asset.parent_id == a.id).order_by(Asset.kind, Asset.name).limit(1000).all()
     projects = db.query(Project).join(ProjectAsset).filter(ProjectAsset.asset_id == a.id).all()
     jobs = db.query(Job).filter(Job.asset_id == a.id).order_by(Job.id.desc()).limit(10).all()
+    pack_name = (a.meta or {}).get("pack")
+    pack = db.query(Pack).filter(Pack.name == pack_name).one_or_none() if pack_name else None
     d.update(
+        pack=({"name": pack_name, "description": pack.description if pack else "", "keywords": (pack.keywords or []) if pack else []} if pack_name else None),
         description=a.description,
         meta=a.meta or {},
         files=[ser_file(f) for f in a.files],
@@ -539,11 +542,15 @@ def _send(path: Path, name: str, download: bool):
 
 @router.get("/files/{file_id}")
 @router.get("/files/{file_id}/{name}")
-def get_file(file_id: int, name: str | None = None, download: bool = False, db: Session = Depends(get_db)):
+def get_file(file_id: int, name: str | None = None, download: bool = False, max: int | None = Query(None, ge=16, le=4096), db: Session = Depends(get_db)):
     f = db.get(AssetFile, file_id)
     if f is None:
         raise HTTPException(404, "file not found")
-    return _send(resolve(f), f.name or name or "file", download)
+    path = resolve(f)
+    if max and path.suffix.lower() in PIL_FORMATS and path.exists():
+        # small JPEG for vision models and other clients that can't read EXR/TGA/WebP or 8K maps
+        return Response(scaled_jpeg(path, max), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
+    return _send(path, f.name or name or "file", download)
 
 
 @router.get("/assets/{asset_id}/raw/{rel_path:path}")

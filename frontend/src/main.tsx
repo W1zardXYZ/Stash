@@ -7,6 +7,7 @@ import { ToastProvider, useToast } from "./components/ui";
 import AssetPage from "./pages/AssetPage";
 import Library from "./pages/Library";
 import { IntegrationsPage, JobsPage, Login, TagsPage, UploadOverlay } from "./pages/Misc";
+import { PackList } from "./pages/Packs";
 import { ProjectList, ProjectPage } from "./pages/Projects";
 import Sources from "./pages/Sources";
 import "./styles.css";
@@ -91,6 +92,7 @@ function Shell() {
         <img className="logo" src="/favicon.svg" alt="Stash" />
         <NavLink to="/" end data-tip="Library"><Icon name="library" size={20} /></NavLink>
         <NavLink to="/projects" data-tip="Projects"><Icon name="project" size={20} /></NavLink>
+        <NavLink to="/packs" data-tip="Packs"><Icon name="layers" size={20} /></NavLink>
         <NavLink to="/tags" data-tip="Tags"><Icon name="tag" size={20} /></NavLink>
         <NavLink to="/sources" data-tip="Sources"><Icon name="folder" size={20} /></NavLink>
         <NavLink to="/jobs" data-tip="Jobs">
@@ -109,6 +111,7 @@ function Shell() {
           <Route path="/asset/:id" element={<AssetPage />} />
           <Route path="/projects" element={<ProjectList />} />
           <Route path="/projects/:id" element={<ProjectPage />} />
+          <Route path="/packs" element={<PackList />} />
           <Route path="/tags" element={<TagsPage />} />
           <Route path="/sources" element={<Sources />} />
           <Route path="/jobs" element={<JobsPage />} />
