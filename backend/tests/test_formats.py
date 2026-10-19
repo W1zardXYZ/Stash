@@ -44,3 +44,18 @@ def test_fts_query():
     assert fts_query("red chair") == '"red"* AND "chair"*'
     assert fts_query('"old barn" -modern') == '"old barn" NOT "modern"*'
     assert fts_query("SM_Chair") == '"SM_Chair"*'
+
+
+def test_uasset_class_skips_helper_imports(tmp_path, monkeypatch):
+    """Packages of classes Stash doesn't know still get their own class, not the MetaData helper."""
+    from stash.ingest import uasset
+
+    p = tmp_path / "Thing.uasset"
+    p.write_bytes(b"\0" * 64)
+    for imports, expected in (
+        (["MetaData", "LandscapeLayerInfoObject"], "LandscapeLayerInfoObject"),
+        (["CableComponent", "MetaData", "UserDefinedStruct", "UserDefinedStructEditorData"], "UserDefinedStruct"),
+        (["MetaData", "SomeFutureClass"], "SomeFutureClass"),
+    ):
+        monkeypatch.setattr(uasset, "_parse_header", lambda data, info, imports=imports: info.class_imports.extend(imports))
+        assert uasset.parse_uasset(p).asset_class == expected

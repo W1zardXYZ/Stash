@@ -135,7 +135,11 @@ cmd_start() {
 cmd_stop() {
   for n in api ui; do
     if [ -f "$DATA/$n.pid" ]; then
-      kill "$(cat "$DATA/$n.pid")" 2>/dev/null || true
+      local pid; pid="$(cat "$DATA/$n.pid")"
+      kill "$pid" 2>/dev/null || true
+      # a busy server takes a few seconds to exit; wait, so `stop && start` finds the port free
+      local i=0
+      while kill -0 "$pid" 2>/dev/null && [ $i -lt 40 ]; do sleep 0.5; i=$((i + 1)); done
       rm -f "$DATA/$n.pid"
     fi
   done

@@ -65,6 +65,11 @@ CLASS_PRIORITY = [
     "CurveTable",
     "PaperSprite",
     "Font",
+    "UserDefinedStruct",
+    "UserDefinedEnum",
+    "LandscapeLayerInfoObject",
+    "RuntimeVirtualTexture",
+    "MapBuildDataRegistry",
 ]
 
 # Unreal class -> Stash asset kind
@@ -415,7 +420,9 @@ def parse_uasset(path: Path, read_limit: int = 64 * 1024 * 1024) -> UAssetInfo:
         if cls:
             info.asset_class, info.class_source = cls, "header"
         elif info.class_imports:
-            info.asset_class, info.class_source = info.class_imports[0], "header"
+            # every editor package imports its MetaData helper; it is never the asset's class
+            cls = next((c for c in info.class_imports if c != "MetaData"), info.class_imports[0])
+            info.asset_class, info.class_source = cls, "header"
         else:
             # header unreadable: fall back to names then naming conventions
             cls = next((c for c in CLASS_PRIORITY if c in info.names), "")

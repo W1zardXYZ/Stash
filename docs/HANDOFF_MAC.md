@@ -40,7 +40,7 @@ Run from the repo root. Expected results are what the same steps give on Linux.
 1. **Update:** `git fetch origin && git checkout claude/zealous-thompson-fv7gqn && git pull`
 2. **Setup:** `scripts/dev.sh setup` – creates `backend/.venv`, installs Python + npm packages,
    prints the Python/Node/Blender it found.
-3. **Unit/API tests:** `scripts/dev.sh test` → `40 passed, 1 skipped`, then the frontend
+3. **Unit/API tests:** `scripts/dev.sh test` → `41 passed, 1 skipped`, then the frontend
    typecheck + build succeed.
 4. **Real-Blender pipeline:** `scripts/dev.sh test-blender` → `1 passed` (builds `.blend`/FBX/GLB
    fixtures with Blender, splits them, converts to blend/fbx/unreal/glb/stl, and checks the
