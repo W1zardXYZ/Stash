@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+/data/
+backend/data/
+node_modules/
+frontend/dist/
+*.blend1
+.venv/
+.env
