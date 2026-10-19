@@ -41,6 +41,10 @@ class Settings:
     thumbnail_size: int = field(default_factory=lambda: int(_env("THUMBNAIL_SIZE", "384")))
     render_thumbnails: bool = field(default_factory=lambda: (_env("RENDER_THUMBNAILS", "true") or "").lower() == "true")
     blender_timeout: int = field(default_factory=lambda: int(_env("BLENDER_TIMEOUT", "1800")))
+    # CPU priority for Blender jobs (0-19, higher = nicer) so a small NAS stays responsive
+    blender_nice: int = field(default_factory=lambda: int(_env("BLENDER_NICE", "10")))
+    # Blender render/convert threads (0 = all cores)
+    blender_threads: int = field(default_factory=lambda: int(_env("BLENDER_THREADS", "0")))
     frontend_dir: Path = field(
         default_factory=lambda: Path(
             _env("FRONTEND_DIR", str(Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"))

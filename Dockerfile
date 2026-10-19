@@ -22,7 +22,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     STASH_DATA_DIR=/data \
     STASH_FRONTEND_DIR=/app/frontend/dist \
     STASH_INTEGRATIONS_DIR=/app/integrations \
-    STASH_BROWSE_ROOTS=/library,/data/uploads
+    STASH_BROWSE_ROOTS=/library,/data/uploads \
+    HOME=/tmp
 
 # Runtime libraries Blender needs in background mode (no display): X11/GL stubs, OpenMP for Cycles
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -46,7 +47,8 @@ COPY backend/ backend/
 COPY integrations/ integrations/
 COPY --from=ui /ui/dist frontend/dist
 
-RUN mkdir -p /data /library
+# Works as root or as an unprivileged user (e.g. TrueNAS "apps", 568:568) that owns /data
+RUN mkdir -p /data /library && chmod 777 /data
 VOLUME ["/data"]
 EXPOSE 8420
 WORKDIR /app/backend

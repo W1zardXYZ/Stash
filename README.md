@@ -46,6 +46,10 @@ docker compose up -d --build
 # open http://<nas>:8420  →  Sources  →  Add source  →  pick /library/...
 ```
 
+**TrueNAS SCALE / HexOS:** a prebuilt image is published to `ghcr.io/w1zardxyz/stash` and
+[`deploy/truenas/stash.yaml`](deploy/truenas/stash.yaml) is ready for *Apps → Install via YAML*,
+tuned for an N100 with 8 GB – see [docs/TRUENAS.md](docs/TRUENAS.md).
+
 The image bundles **Blender 4.5 LTS** (x86-64) for headless extraction, conversion and Cycles CPU
 thumbnails. On ARM NAS boxes build with `--build-arg INSTALL_BLENDER=false`: indexing, viewing,
 tagging, Unreal parsing and original-file downloads work; `.blend` splitting and conversions don't.
@@ -62,7 +66,9 @@ tagging, Unreal parsing and original-file downloads work; `.blend` splitting and
 | `STASH_RENDER_THUMBNAILS` | `true` | Cycles CPU thumbnails for models/materials |
 | `STASH_THUMBNAIL_SIZE` | `384` | Thumbnail size in px |
 | `STASH_BLENDER` | auto | Path to a Blender binary (`none` to disable) |
-| `STASH_BLENDER_TIMEOUT` | `1800` | Seconds per Blender job |
+| `STASH_BLENDER_TIMEOUT` | `1800` | Seconds without progress before a Blender job is stopped |
+| `STASH_BLENDER_NICE` | `10` | CPU priority of Blender jobs (0–19, higher = gentler on the NAS) |
+| `STASH_BLENDER_THREADS` | `0` | Threads per Blender job (0 = all cores) |
 | `STASH_PUBLIC_URL` | – | External URL when behind a reverse proxy |
 | `ANTHROPIC_API_KEY` | – | Enables AI tagging (Claude) |
 | `STASH_AI_MODEL` | `claude-opus-5-5` | Model for AI tagging; `claude-haiku-5-5` is much cheaper for bulk runs |

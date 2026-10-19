@@ -51,11 +51,26 @@ def run_script(
     if not available():
         raise BlenderUnavailable("Blender is not available on this server (set STASH_BLENDER)")
     cmd = [settings.blender, "-b"]
+    if settings.blender_threads > 0:
+        cmd += ["--threads", str(settings.blender_threads)]
     if blend_file:
         cmd.append(str(blend_file))
     cmd += ["--factory-startup", "-noaudio", "--python-exit-code", "1", "--python", str(SCRIPTS_DIR / script), "--", *args]
     env = {k: v for k, v in os.environ.items() if k != "OCIO"}
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace", env=env)
+    nice = max(0, min(19, settings.blender_nice))
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        errors="replace",
+        env=env,
+    )
+    if nice and hasattr(os, "setpriority"):
+        try:
+            os.setpriority(os.PRIO_PROCESS, proc.pid, nice)
+        except OSError:
+            pass
     lines: list[str] = []
     # The timeout is an *inactivity* limit: big .blend files may legitimately take hours, but
     # the scripts print progress per asset, so silence for this long means Blender is stuck.

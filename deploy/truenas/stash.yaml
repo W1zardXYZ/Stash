@@ -1,0 +1,43 @@
+# Stash for TrueNAS SCALE 24.10+ / HexOS  (Apps -> Discover Apps -> ⋮ -> Install via YAML)
+#
+# Tuned for an Intel N100 with 8 GB RAM: one Blender job at a time, smaller thumbnails,
+# Blender at low CPU priority and a memory cap so ZFS keeps the rest.
+#
+# Before installing, create the datasets (see docs/TRUENAS.md) and edit the paths
+# marked CHANGE ME. Paths on the left are on your NAS, on the right inside the container.
+services:
+  stash:
+    image: ghcr.io/w1zardxyz/stash:latest
+    container_name: stash
+    restart: unless-stopped
+    # TrueNAS "apps" user. The /data dataset must be owned by it (or remove this line to run as root).
+    user: "568:568"
+    ports:
+      - "8420:8420"
+    environment:
+      TZ: "Europe/Berlin"              # CHANGE ME
+      STASH_WORKERS: "1"               # one Blender job at a time (big .blend files need 1-3 GB)
+      STASH_THUMBNAIL_SIZE: "256"
+      STASH_RENDER_THUMBNAILS: "true"  # "false" = no Cycles renders; set thumbnails from the web viewer instead
+      STASH_BLENDER_NICE: "15"         # keep SMB/other apps responsive while Blender works
+      STASH_BLENDER_THREADS: "3"       # leave one N100 core free
+      STASH_BLENDER_TIMEOUT: "3600"    # seconds without progress before a Blender job is stopped
+      STASH_BROWSE_ROOTS: "/library,/data/uploads"
+      # STASH_PASSWORD: "change-me"    # require a login (also the token for the Blender/Unreal plugins)
+      # ANTHROPIC_API_KEY: "sk-ant-..." # optional cloud AI tagging
+      # STASH_AI_MODEL: "claude-haiku-5-5"
+    volumes:
+      # Database, previews, thumbnails, exports. Put this on an SSD pool if you have one.
+      - /mnt/tank/apps/stash:/data                     # CHANGE ME
+      # Your asset folders, read-only. Add one line per share, then add them as Sources in the web UI.
+      - /mnt/tank/assets:/library/assets:ro            # CHANGE ME
+      # - /mnt/tank/fab-vault:/library/fab:ro
+      # - /mnt/tank/unreal-projects:/library/unreal:ro
+      # - /mnt/tank/blender-addons:/library/addons:ro
+    mem_limit: 4g
+    cpus: 3.5
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8420/api/status"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
