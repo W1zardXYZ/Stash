@@ -171,6 +171,7 @@ class Scanner:
             else:
                 self.scan_folder(root)
         self.db.flush()
+        self._drop_ignored()
         missing = self._mark_missing()
         src.last_scan_at = _now()
         return {"counts": dict(self.counts), "missing": missing}
@@ -200,6 +201,21 @@ class Scanner:
                     self.log(f"copy failed {s}: {e}")
         self.log(f"imported {copied} new/changed files into {dest_root}")
         return dest_root
+
+    def _drop_ignored(self) -> None:
+        """Assets the user removed from the library stay removed on rescans."""
+        ignored = set((self.source.options or {}).get("ignored", []))
+        if not ignored:
+            return
+        from ..search import unindex_asset
+
+        for a in self.db.query(Asset).filter(Asset.source_id == self.source.id, Asset.source_path.in_(ignored), Asset.parent_id.is_(None)):
+            for child in self.db.query(Asset).filter(Asset.parent_id == a.id):
+                unindex_asset(self.db, child.id)
+            unindex_asset(self.db, a.id)
+            self.db.delete(a)
+        self.followups = [f for f in self.followups if f[1].source_path not in ignored]
+        self.db.flush()
 
     def _mark_missing(self) -> int:
         q = self.db.query(Asset).filter(

@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from sqlalchemy import func, or_
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..convert.exporter import available_targets
@@ -144,7 +144,7 @@ def list_assets(
 @router.get("/facets")
 def facets(q: str | None = None, source: int | None = None, project: int | None = None, db: Session = Depends(get_db)):
     base, _ = build_query(db, q=q, source=source, project=project)
-    sub = base.with_entities(Asset.id).subquery()
+    sub = select(base.with_entities(Asset.id).subquery().c.id)
     kinds = dict(db.query(Asset.kind, func.count()).filter(Asset.id.in_(sub)).group_by(Asset.kind).all())
     formats = dict(db.query(Asset.format, func.count()).filter(Asset.id.in_(sub)).group_by(Asset.format).all())
     tag_rows = (

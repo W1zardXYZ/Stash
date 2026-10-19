@@ -1,0 +1,30 @@
+# Stash on a NAS:  docker compose up -d   then open http://<nas>:8420
+services:
+  stash:
+    build: .
+    image: stash:latest
+    container_name: stash
+    restart: unless-stopped
+    ports:
+      - "8420:8420"
+    environment:
+      # Parallel background jobs (Blender extraction/conversion is CPU heavy)
+      STASH_WORKERS: "2"
+      # Uncomment to require a password in the web UI (also usable as API token for the add-ons)
+      # STASH_PASSWORD: "change-me"
+      # Folders the "Add source" dialog may browse (paths inside the container)
+      STASH_BROWSE_ROOTS: "/library,/data/uploads"
+      # Rendered thumbnails with Cycles on CPU; set false on very slow NAS CPUs
+      STASH_RENDER_THUMBNAILS: "true"
+      STASH_THUMBNAIL_SIZE: "384"
+      # Public URL if behind a reverse proxy (used in the Blender extension repository)
+      # STASH_PUBLIC_URL: "https://stash.example.com"
+    volumes:
+      # Database, previews, thumbnails, exports, uploads
+      - ./data:/data
+      # Your existing asset folders - mount read-only and add them as sources in the UI
+      - /volume1/assets:/library/assets:ro
+      # Epic Games Launcher vault cache / Fab downloads, Unreal projects, Blender add-ons...
+      # - /volume1/EpicVault:/library/fab:ro
+      # - /volume1/projects/MyGame:/library/unreal/MyGame:ro
+      # - /volume1/blender-addons:/library/addons:ro
