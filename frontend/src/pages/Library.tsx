@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { AssetBrief, Facets, KIND_LABELS, Project, Source, api, formatCount, qs } from "../api";
+import { AssetBrief, Facets, KIND_LABELS, Project, Source, api, formatCount, getStatus, qs } from "../api";
 import { Icon, KIND_ICON } from "../components/Icon";
 import { AssetCard, Modal, useToast } from "../components/ui";
 
@@ -13,6 +13,7 @@ const FLAG_LABELS: Record<string, [string, string]> = {
   procedural: ["Procedural", "sparkle"],
   textured: ["Textured", "image"],
   untagged: ["Untagged", "tag"],
+  duplicate: ["Duplicates", "copy"],
 };
 
 function toggleIn(list: string[], v: string) {
@@ -29,6 +30,7 @@ export default function Library({ projectId, header }: { projectId?: number; hea
   const flags = (params.get("flags") ?? "").split(",").filter(Boolean);
   const source = params.get("source") ?? "";
   const ueClass = params.get("ue_class") ?? "";
+  const pack = params.get("pack") ?? "";
   const sort = params.get("sort") ?? (q ? "relevance" : "updated");
   const order = params.get("order") ?? "desc";
   const rootOnly = params.get("root") === "1";
@@ -46,6 +48,7 @@ export default function Library({ projectId, header }: { projectId?: number; hea
   const [searchText, setSearchText] = useState(q);
   const [bulkTag, setBulkTag] = useState(false);
   const [showSide, setShowSide] = useState(false);
+  const [aiEnabled, setAiEnabled] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const reqId = useRef(0);
 
@@ -63,7 +66,7 @@ export default function Library({ projectId, header }: { projectId?: number; hea
   );
 
   const query = useMemo(
-    () => ({ q, kind: kinds, tags, flags, source, ue_class: ueClass, sort, order, project: projectId, parent: rootOnly ? "root" : undefined }),
+    () => ({ q, kind: kinds, tags, flags, source, ue_class: ueClass, pack, sort, order, project: projectId, parent: rootOnly ? "root" : undefined }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [params.toString(), projectId],
   );
@@ -95,6 +98,7 @@ export default function Library({ projectId, header }: { projectId?: number; hea
   useEffect(() => {
     api.get<Source[]>("/api/sources").then(setSources).catch(() => undefined);
     api.get<Project[]>("/api/projects").then(setProjects).catch(() => undefined);
+    getStatus().then((s) => setAiEnabled(s.ai)).catch(() => undefined);
   }, []);
 
   useEffect(() => setSearchText(q), [q]);
@@ -154,7 +158,7 @@ export default function Library({ projectId, header }: { projectId?: number; hea
     localStorage.setItem("stash.card", String(v));
   };
 
-  const activeFilters = kinds.length + tags.length + flags.length + (source ? 1 : 0) + (ueClass ? 1 : 0);
+  const activeFilters = kinds.length + tags.length + flags.length + (source ? 1 : 0) + (ueClass ? 1 : 0) + (pack ? 1 : 0);
 
   return (
     <div className={`library ${showSide ? "show-side" : ""}`}>
@@ -188,6 +192,18 @@ export default function Library({ projectId, header }: { projectId?: number; hea
                 <Icon name={s.kind === "unreal_project" ? "unreal" : s.kind === "blender_file" ? "blender" : "folder"} size={15} />
                 <span className="ellipsis">{s.name}</span>
                 <span className="count">{formatCount(s.asset_count)}</span>
+              </div>
+            ))}
+          </>
+        )}
+        {facets && Object.keys(facets.packs ?? {}).length > 1 && (
+          <>
+            <h4>Packs</h4>
+            {Object.entries(facets.packs).slice(0, 40).map(([p, n]) => (
+              <div key={p} className={`facet ${pack === p ? "on" : ""}`} onClick={() => update({ pack: pack === p ? null : p })} title={p}>
+                <Icon name="layers" size={15} />
+                <span className="ellipsis">{p}</span>
+                <span className="count">{formatCount(n)}</span>
               </div>
             ))}
           </>
@@ -246,7 +262,7 @@ export default function Library({ projectId, header }: { projectId?: number; hea
           <div className="result-info">
             <span>{loading && page === 1 ? "Loading…" : `${total.toLocaleString()} assets`}</span>
             {activeFilters > 0 && (
-              <button className="btn ghost sm" onClick={() => update({ kind: null, tags: null, flags: null, source: null, ue_class: null })}>
+              <button className="btn ghost sm" onClick={() => update({ kind: null, tags: null, flags: null, source: null, ue_class: null, pack: null })}>
                 <Icon name="x" size={12} />Clear {activeFilters} filter{activeFilters > 1 ? "s" : ""}
               </button>
             )}
@@ -295,6 +311,11 @@ export default function Library({ projectId, header }: { projectId?: number; hea
             <button className="btn sm" title="Send to Blender" onClick={() => api.post("/api/deliveries", { app: "blender", asset_ids: [...selected] }).then(() => toast("Sent to Blender", "ok"))}><Icon name="blender" size={14} /></button>
             <button className="btn sm" title="Send to Unreal" onClick={() => api.post("/api/deliveries", { app: "unreal", asset_ids: [...selected] }).then(() => toast("Sent to Unreal", "ok"))}><Icon name="unreal" size={14} /></button>
             <button className="btn sm" onClick={() => bulk({ favorite: true }, "Marked as favorite")}><Icon name="star" size={14} /></button>
+            {aiEnabled && (
+              <button className="btn sm" title="Categorize & tag with AI" onClick={() => api.post<{ jobs: number[] }>("/api/ai/tag", { ids: [...selected] }).then((r) => toast(`AI tagging queued for ${r.jobs.length} asset(s)`, "ok")).catch((e) => toast(e.message, "error"))}>
+                <Icon name="sparkle" size={14} />AI tag
+              </button>
+            )}
             <button className="btn sm danger" onClick={() => confirm(`Remove ${selected.size} assets from the library? Files on disk are not touched.`) && bulk({ delete: true }, "Removed")}>
               <Icon name="trash" size={14} />
             </button>

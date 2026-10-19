@@ -5,3 +5,4 @@ pydantic>=2.6
 pillow>=10.3
 python-multipart>=0.0.9
 zstandard>=0.22
+anthropic>=1.15

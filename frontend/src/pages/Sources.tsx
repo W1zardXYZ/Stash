@@ -214,6 +214,9 @@ function SourceSettingsModal({ source, onClose, onSaved }: { source: Source; onC
         </select>
       </label>
       <label className="check"><input type="checkbox" checked={opts.render_thumbnails} onChange={(e) => setOpts({ ...opts, render_thumbnails: e.target.checked })} />Render thumbnails with Blender (Cycles, CPU)</label>
+      <label className="field"><span>Rescan automatically every … hours (0 = off)</span>
+        <input className="input" type="number" min={0} step={1} value={opts.rescan_hours ?? 0} onChange={(e) => setOpts({ ...opts, rescan_hours: Number(e.target.value) })} />
+      </label>
       <label className="check"><input type="checkbox" checked={opts.extract_archives} onChange={(e) => setOpts({ ...opts, extract_archives: e.target.checked })} />Unpack .zip asset packs</label>
       {opts.ignored?.length > 0 && (
         <div className="callout small">

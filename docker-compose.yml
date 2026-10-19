@@ -19,6 +19,9 @@ services:
       STASH_THUMBNAIL_SIZE: "384"
       # Public URL if behind a reverse proxy (used in the Blender extension repository)
       # STASH_PUBLIC_URL: "https://stash.example.com"
+      # Optional AI tagging with Claude (thumbnail + metadata -> category, tags, description)
+      # ANTHROPIC_API_KEY: "sk-ant-..."
+      # STASH_AI_MODEL: "claude-haiku-5-5"   # cheaper for tagging thousands of assets
     volumes:
       # Database, previews, thumbnails, exports, uploads
       - ./data:/data

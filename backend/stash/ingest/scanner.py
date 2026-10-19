@@ -92,6 +92,8 @@ class Scanner:
                 a.meta = merged
             else:
                 setattr(a, k, v)
+        if "pack" not in (a.meta or {}):
+            a.meta = {**(a.meta or {}), "pack": _pack_for(source_path)}
         a.seen_at = self.scan_started
         a.status = "ok"
         self._asset_cache[key] = a
@@ -750,6 +752,15 @@ class Scanner:
                             self.link(a, mesh, "animates")
         for a, _ in parsed:
             index_asset(self.db, a)
+
+
+def _pack_for(source_path: str) -> str:
+    """Top-level folder (or zip) an asset lives in - usually the asset pack it came from."""
+    head = source_path.split("!/", 1)[0] if "!/" in source_path else source_path
+    parts = [p for p in head.replace("\\", "/").split("/") if p and p != "."]
+    if "!/" in source_path:
+        return Path(parts[-1]).stem if parts else ""
+    return parts[0] if len(parts) > 1 else ""
 
 
 def _blend_thumbnail(path: Path) -> bytes | None:

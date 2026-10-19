@@ -118,6 +118,7 @@ export interface Facets {
   formats: Record<string, number>;
   tags: { name: string; color: string; count: number }[];
   ue_classes: Record<string, number>;
+  packs: Record<string, number>;
   flags: Record<string, number>;
 }
 
@@ -130,6 +131,7 @@ export interface Status {
   sources: number;
   jobs: Record<string, number>;
   auth: boolean;
+  ai: boolean;
   browse_roots: string[];
   data_dir: string;
 }
@@ -182,6 +184,16 @@ export function qs(params: Record<string, string | number | boolean | undefined 
   }
   const s = p.toString();
   return s ? `?${s}` : "";
+}
+
+let statusPromise: Promise<Status> | null = null;
+/** Server status, fetched once per page load (capabilities like Blender/AI don't change at runtime). */
+export function getStatus(): Promise<Status> {
+  statusPromise ??= api.get<Status>("/api/status").catch((e) => {
+    statusPromise = null;
+    throw e;
+  });
+  return statusPromise;
 }
 
 /** Poll a job until it finishes. */

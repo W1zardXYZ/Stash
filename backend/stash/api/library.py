@@ -20,6 +20,7 @@ from ..jobs import enqueue
 from ..models import Asset, Job, Project, ProjectAsset, Source, Tag, asset_tags
 from ..processing import PRIORITY
 from ..search import index_asset, reindex_all
+from ..ai import enabled as ai_enabled
 from .common import auth_enabled, ser_asset_brief, ser_job, ser_source
 
 router = APIRouter()
@@ -39,6 +40,7 @@ def status(db: Session = Depends(get_db)):
         "sources": db.query(func.count(Source.id)).scalar(),
         "jobs": jobs,
         "auth": auth_enabled(),
+        "ai": ai_enabled(),
         "browse_roots": _roots(),
         "data_dir": str(settings.data_dir),
     }

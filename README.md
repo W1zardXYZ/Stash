@@ -24,6 +24,8 @@ the existing projects I looked at and why this one is built from scratch.
 | **Organize** | Full-text search (names, tags, materials, bones, paths), facets by type/feature/source/Unreal class/tag, tags with colors & merge, ratings, favorites, notes, projects (collections) – all bulk-editable. |
 | **Convert & export** | Any asset to `.blend` (procedural materials intact), glTF/GLB, FBX (generic / Unreal / Unity presets), OBJ, USD/USDZ, STL, PLY, Alembic; texture format conversion; an **Unreal package** (FBX + textures + manifest the plugin turns into material instances) or **native `.uasset`** with its whole dependency closure. Whole projects export to one zip. |
 | **Into your DCC** | Blender add-on: browse/search in the N-panel, import (materials onto the selection, geo-nodes onto the active object, actions onto the active rig, HDRIs onto the world), push selections/files back. Unreal plugin: push Content Browser assets, import packages with auto-built material instances. Both can **receive** assets you click *Send to Blender/Unreal* on in the web UI. |
+| **AI cataloguing (optional)** | With an Anthropic API key on the server, *AI tag* (per asset or on a whole selection) has Claude look at the thumbnail and metadata and add a category, search tags and a one-line description – handy for thousands of untagged pack assets. |
+| **Housekeeping** | Pack facet (the asset pack each file came from), duplicate finder (same file in several places), missing-file tracking, scheduled rescans per source. |
 | **Blender add-ons** | Add-ons/extensions in your sources are catalogued, and Stash serves a **Blender extension repository** – add one URL in Blender's preferences and install your own add-on collection from it. |
 
 | Rigged + animated preview | PBR texture set | Unreal project | Procedural material |
@@ -57,6 +59,9 @@ tagging, Unreal parsing and original-file downloads work; `.blend` splitting and
 | `STASH_BLENDER` | auto | Path to a Blender binary (`none` to disable) |
 | `STASH_BLENDER_TIMEOUT` | `1800` | Seconds per Blender job |
 | `STASH_PUBLIC_URL` | – | External URL when behind a reverse proxy |
+| `ANTHROPIC_API_KEY` | – | Enables AI tagging (Claude) |
+| `STASH_AI_MODEL` | `claude-opus-5-5` | Model for AI tagging; `claude-haiku-5-5` is much cheaper for bulk runs |
+| `STASH_AI` | auto | `false` disables AI tagging even when a key is present |
 
 ## Getting your Fab / Unreal Marketplace content in
 

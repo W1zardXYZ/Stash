@@ -21,7 +21,7 @@ from .models import Asset, AssetFile, AssetLink, Job, Project, Source, Tag
 from .search import index_asset
 from .storage import add_linked_file, add_stored_file, resolve, store_bytes
 
-PRIORITY = {"scan_source": 50, "thumbnail": 20, "extract_blend": 10, "preview": 5, "export": 40, "package_project": 30}
+PRIORITY = {"scan_source": 50, "thumbnail": 20, "extract_blend": 10, "preview": 5, "export": 40, "package_project": 30, "ai_tag": 2}
 
 
 def queue_followups(db: Session, followups) -> int:
@@ -84,6 +84,8 @@ def ingest_manifest(db: Session, parent: Asset, manifest: dict, out_dir: Path, c
         stats = entry.get("stats") or {}
         meta = {k: v for k, v in entry.items() if k not in ("files", "key", "name", "kind", "tags", "description")}
         meta["origin"] = "blend"
+        if (parent.meta or {}).get("pack"):
+            meta["pack"] = parent.meta["pack"]
         meta["blend_file"] = parent.source_path
         if (a.meta or {}).get("renamed"):
             meta["renamed"] = True
@@ -336,6 +338,57 @@ def job_thumbnail(ctx: JobContext):
         if asset.thumbnail_file_id is None or asset.kind in ("texture", "hdri", "material"):
             asset.thumbnail_file_id = af.id
     return {"thumbnail": True}
+
+
+# ----------------------------------------------------------------------------- AI tagging
+
+@handler("ai_tag")
+def job_ai_tag(ctx: JobContext):
+    from . import ai
+
+    if not ai.enabled():
+        raise RuntimeError("AI tagging is not configured (set ANTHROPIC_API_KEY on the server)")
+    with session_scope() as db:
+        asset = db.get(Asset, ctx.asset_id)
+        if asset is None:
+            return {}
+        result = ai.classify(db, asset)
+        for name in result["tags"]:
+            tag = db.query(Tag).filter(Tag.name == name).one_or_none()
+            if tag is None:
+                tag = Tag(name=name)
+                db.add(tag)
+                db.flush()
+            if tag not in asset.tags:
+                asset.tags.append(tag)
+        if result["description"] and not asset.description:
+            asset.description = result["description"]
+        asset.meta = {**(asset.meta or {}), "ai": result, "category": result["category"]}
+        index_asset(db, asset)
+    return result
+
+
+# ----------------------------------------------------------------------------- scheduled rescans
+
+def scheduler_loop(stop_event) -> None:
+    """Re-scan sources whose `rescan_hours` option has elapsed (checked every minute)."""
+    from datetime import datetime, timedelta, timezone
+
+    while not stop_event.wait(60):
+        try:
+            with session_scope() as db:
+                now = datetime.now(timezone.utc)
+                for src in db.query(Source):
+                    hours = float((src.options or {}).get("rescan_hours") or 0)
+                    if hours <= 0 or src.status == "scanning":
+                        continue
+                    last = src.last_scan_at
+                    if last is not None and last.tzinfo is None:
+                        last = last.replace(tzinfo=timezone.utc)
+                    if last is None or now - last >= timedelta(hours=hours):
+                        enqueue("scan_source", {}, source_id=src.id, priority=PRIORITY["scan_source"], db=db)
+        except Exception:  # keep the scheduler alive
+            pass
 
 
 # ----------------------------------------------------------------------------- exports

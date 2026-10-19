@@ -57,6 +57,7 @@ def build_query(
     parent: str | None = None,
     status: str | None = None,
     ue_class: str | None = None,
+    pack: str | None = None,
 ):
     query = db.query(Asset)
     ids = search_ids(db, q) if q else None
@@ -74,6 +75,8 @@ def build_query(
         query = query.filter(Asset.format.in_(_split(fmt)))
     if ue_class:
         query = query.filter(func.json_extract(Asset.meta, "$.ue_class").in_(_split(ue_class)))
+    if pack:
+        query = query.filter(func.json_extract(Asset.meta, "$.pack").in_(_split(pack)))
     for f in _split(flags):
         col = {
             "rigged": Asset.is_rigged,
@@ -88,6 +91,8 @@ def build_query(
             query = query.filter(Asset.preview_file_id.isnot(None))
         elif f == "untagged":
             query = query.filter(~Asset.tags.any())
+        elif f == "duplicate":
+            query = query.filter(Asset.fingerprint.in_(_duplicate_fingerprints(db)))
     if parent == "root":
         query = query.filter(Asset.parent_id.is_(None))
     elif parent:
@@ -99,6 +104,16 @@ def build_query(
     else:
         query = query.filter(Asset.status != "missing")
     return query, ids
+
+
+def _duplicate_fingerprints(db: Session):
+    """Fingerprints shared by more than one indexed file (same content in several places)."""
+    return (
+        select(Asset.fingerprint)
+        .where(Asset.fingerprint != "", Asset.parent_id.is_(None), Asset.status != "missing")
+        .group_by(Asset.fingerprint)
+        .having(func.count(Asset.id) > 1)
+    )
 
 
 @router.get("/assets")
@@ -113,13 +128,14 @@ def list_assets(
     parent: str | None = None,
     status: str | None = None,
     ue_class: str | None = None,
+    pack: str | None = None,
     sort: str = "updated",
     order: str = "desc",
     page: int = Query(1, ge=1),
     per_page: int = Query(60, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
-    query, ids = build_query(db, q, kind, tags, project, source, format, flags, parent, status, ue_class)
+    query, ids = build_query(db, q, kind, tags, project, source, format, flags, parent, status, ue_class, pack)
     total = query.count()
     if q and ids is not None and sort == "relevance":
         rank = {aid: i for i, aid in enumerate(ids)}
@@ -169,12 +185,23 @@ def facets(q: str | None = None, source: int | None = None, project: int | None 
         "textured": db.query(func.count()).filter(Asset.id.in_(sub), Asset.has_textures.is_(True)).scalar(),
         "favorite": db.query(func.count()).filter(Asset.id.in_(sub), Asset.favorite.is_(True)).scalar(),
         "untagged": db.query(func.count()).filter(Asset.id.in_(sub), ~Asset.tags.any()).scalar(),
+        "duplicate": db.query(func.count()).filter(Asset.id.in_(sub), Asset.fingerprint.in_(_duplicate_fingerprints(db))).scalar(),
     }
+    pack_col = func.json_extract(Asset.meta, "$.pack")
+    packs = (
+        db.query(pack_col, func.count())
+        .filter(Asset.id.in_(sub), pack_col.isnot(None), pack_col != "")
+        .group_by(pack_col)
+        .order_by(func.count().desc())
+        .limit(150)
+        .all()
+    )
     return {
         "kinds": kinds,
         "formats": {k: v for k, v in formats.items() if k},
         "tags": [{"name": n, "color": c, "count": cnt} for n, c, cnt in tag_rows],
         "ue_classes": ue_classes,
+        "packs": dict(packs),
         "flags": flags,
     }
 
@@ -400,6 +427,20 @@ def export(asset_id: int, body: ExportBody, db: Session = Depends(get_db)):
             return {"file": ser_file(cached)}
     jid = enqueue("export", {"target": body.target}, asset_id=a.id, priority=PRIORITY["export"])
     return {"job_id": jid}
+
+
+class AiBody(BaseModel):
+    ids: list[int]
+
+
+@router.post("/ai/tag")
+def ai_tag(body: AiBody, db: Session = Depends(get_db)):
+    from .. import ai
+
+    if not ai.enabled():
+        raise HTTPException(400, "AI tagging is not configured - set ANTHROPIC_API_KEY for the Stash server")
+    jobs = [enqueue("ai_tag", {}, asset_id=i, priority=PRIORITY["ai_tag"]) for i in body.ids if db.get(Asset, i)]
+    return {"jobs": jobs}
 
 
 @router.post("/assets/{asset_id}/reprocess")

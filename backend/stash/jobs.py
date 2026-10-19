@@ -184,6 +184,9 @@ class WorkerPool:
             t = threading.Thread(target=self._loop, name=f"stash-worker-{i}", daemon=True)
             t.start()
             self.threads.append(t)
+        from .processing import scheduler_loop
+
+        threading.Thread(target=scheduler_loop, args=(self.stop,), name="stash-scheduler", daemon=True).start()
 
     def _loop(self) -> None:
         while not self.stop.is_set():

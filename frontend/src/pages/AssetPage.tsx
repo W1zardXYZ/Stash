@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { AssetBrief, AssetDetail, AssetFile, Job, KIND_LABELS, Project, TARGET_LABELS, api, formatBytes, waitForJob } from "../api";
+import { AssetBrief, AssetDetail, AssetFile, Job, KIND_LABELS, Project, TARGET_LABELS, api, formatBytes, getStatus, waitForJob } from "../api";
 import { Icon, KIND_ICON } from "../components/Icon";
 import NodeGraph from "../components/NodeGraph";
 import Viewer, { ViewerSource } from "../components/Viewer";
@@ -52,6 +52,8 @@ export default function AssetPage() {
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -75,6 +77,7 @@ export default function AssetPage() {
   useEffect(() => {
     api.get<Project[]>("/api/projects").then(setProjects).catch(() => undefined);
     api.get<{ name: string }[]>("/api/tags").then((t) => setAllTags(t.map((x) => x.name))).catch(() => undefined);
+    getStatus().then((s) => setAiEnabled(s.ai)).catch(() => undefined);
   }, []);
 
   const source = useMemo(() => (a ? viewerSource(a, related) : null), [a, related]);
@@ -97,6 +100,22 @@ export default function AssetPage() {
       toast("Thumbnail updated", "ok");
     } catch (e: any) {
       toast(e.message, "error");
+    }
+  };
+
+  const aiTag = async () => {
+    setAiBusy(true);
+    try {
+      const r = await api.post<{ jobs: number[] }>("/api/ai/tag", { ids: [a.id] });
+      const job = await waitForJob(r.jobs[0]);
+      if (job.status === "done") {
+        toast(`AI: ${job.result.category}`, "ok");
+        load();
+      } else toast(`AI tagging failed: ${job.message}`, "error");
+    } catch (e: any) {
+      toast(e.message, "error");
+    } finally {
+      setAiBusy(false);
     }
   };
 
@@ -180,7 +199,15 @@ export default function AssetPage() {
         {tab === "overview" && (
           <>
             <div className="section">
-              <h5>Tags</h5>
+              <h5>
+                Tags
+                {aiEnabled && (
+                  <button className="btn sm ghost" style={{ marginLeft: "auto" }} disabled={aiBusy} onClick={aiTag} title="Let Claude look at the thumbnail and metadata and suggest a category, tags and description">
+                    <Icon name="sparkle" size={13} />{aiBusy ? "Thinking…" : "AI tag"}
+                  </button>
+                )}
+              </h5>
+              {meta.category && <div className="small muted" style={{ marginBottom: 6 }}>Category: <b>{meta.category}</b></div>}
               <TagInput
                 tags={a.tags}
                 suggestions={allTags}
@@ -236,6 +263,7 @@ export default function AssetPage() {
                 {meta.ue_package && (<><dt>Unreal path</dt><dd className="mono">{meta.ue_package}</dd></>)}
                 {meta.ue_engine_version && (<><dt>Engine</dt><dd>UE {meta.ue_engine_version}</dd></>)}
                 {meta.ue_project && (<><dt>UE project</dt><dd>{meta.ue_project}</dd></>)}
+                {meta.pack && (<><dt>Pack</dt><dd><Link to={`/?pack=${encodeURIComponent(meta.pack)}`}>{meta.pack}</Link></dd></>)}
                 {meta.blender_version && (<><dt>Blender</dt><dd>{meta.blender_version}</dd></>)}
                 {meta.scene_stats && (<><dt>File contents</dt><dd>{Object.entries(meta.scene_stats).map(([k, v]) => `${v} ${k}`).join(" · ")}</dd></>)}
                 {meta.addon && (
