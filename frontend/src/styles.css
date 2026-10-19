@@ -347,4 +347,17 @@ pre.log { background: var(--bg); border: 1px solid var(--border); border-radius:
   .sidebar { display: none; }
   .library.show-side .sidebar { display: block; position: fixed; inset: 0 auto 0 64px; width: 280px; z-index: 40; box-shadow: var(--shadow); }
   .page { padding: 16px; }
+  .app { grid-template-columns: 52px 1fr; }
+  .rail a { width: 40px; height: 40px; }
+  .toolbar { padding: 10px 12px; gap: 8px; }
+  .search { min-width: 0; flex: 1 1 100%; order: -1; }
+  .toolbar input[type="range"] { display: none; }
+  .grid-wrap { padding: 12px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+  .viewer .stats { display: none; }
+  .viewer .anim-bar { left: 8px; right: 8px; transform: none; max-width: none; }
+  .viewer .anim-bar input[type="range"] { flex: 1; min-width: 60px; }
+  .viewer .anim-bar .muted { display: none; }
+  .bulkbar { left: 60px; right: 8px; transform: none; flex-wrap: wrap; }
+  .library.show-side .sidebar { inset: 0 auto 0 52px; }
 }
