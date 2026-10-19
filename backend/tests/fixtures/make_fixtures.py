@@ -7,6 +7,7 @@ Creates:
   worm.fbx / worm.glb rigged animated mesh exported from the same scene
   crate.obj (+ .mtl)  textured OBJ
   textures/Crate_*    a tiny PBR texture set
+  hdri/sky.exr        a tiny float image (Pillow can't read EXR, so exports go through Blender)
 """
 
 import math
@@ -43,6 +44,12 @@ nrm_img = make_image("Crate_Normal", (0.5, 0.5, 1.0), os.path.join(tex, "Crate_N
 make_image("Crate_Roughness", (0.7, 0.7, 0.7), os.path.join(tex, "Crate_Roughness.png"))
 make_image("Planks_4K_Albedo", (0.5, 0.35, 0.2), os.path.join(tex, "Planks_4K_Albedo.png"))
 make_image("Planks_4K_Normal", (0.5, 0.5, 1.0), os.path.join(tex, "Planks_4K_Normal.png"))
+os.makedirs(os.path.join(out, "hdri"), exist_ok=True)
+sky = bpy.data.images.new("sky", 64, 32, float_buffer=True)
+sky.pixels = [2.0, 1.5, 1.0, 1.0] * (64 * 32)
+sky.filepath_raw = os.path.join(out, "hdri", "sky.exr")
+sky.file_format = "OPEN_EXR"
+sky.save()
 
 # --- procedural material cube
 bpy.ops.mesh.primitive_cube_add(size=2, location=(0, 0, 1))

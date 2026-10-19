@@ -27,12 +27,27 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
 
 from .db import Base
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class UTCDateTime(TypeDecorator):
+    """Stored as UTC; always read back timezone-aware (SQLite drops the offset), so the API
+    sends "+00:00" and browsers don't mistake the time for local time."""
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        return value.astimezone(timezone.utc) if value is not None and value.tzinfo is not None else value
+
+    def process_result_value(self, value, dialect):
+        return value.replace(tzinfo=timezone.utc) if value is not None and value.tzinfo is None else value
 
 
 def new_uid() -> str:
@@ -76,8 +91,8 @@ class Source(Base):
     mode: Mapped[str] = mapped_column(String(16), default="linked")
     options: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(32), default="idle")
-    last_scan_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_scan_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
 
     assets: Mapped[list["Asset"]] = relationship(back_populates="source", passive_deletes=True)
@@ -114,9 +129,9 @@ class Asset(Base):
     poly_count: Mapped[int] = mapped_column(Integer, default=0)
     thumbnail_file_id: Mapped[int | None] = mapped_column(ForeignKey("asset_files.id", ondelete="SET NULL", use_alter=True), nullable=True)
     preview_file_id: Mapped[int | None] = mapped_column(ForeignKey("asset_files.id", ondelete="SET NULL", use_alter=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-    seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+    seen_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
     source: Mapped[Source | None] = relationship(back_populates="assets")
     parent: Mapped["Asset | None"] = relationship(remote_side="Asset.id", back_populates="children")
@@ -148,7 +163,7 @@ class AssetFile(Base):
     # For textures: channel (base_color, normal, roughness, ...). For exports: target/preset key.
     label: Mapped[str] = mapped_column(String(100), default="")
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
     asset: Mapped[Asset] = relationship(back_populates="files", foreign_keys=[asset_id])
 
@@ -182,7 +197,7 @@ class Project(Base):
     name: Mapped[str] = mapped_column(String(200), unique=True)
     description: Mapped[str] = mapped_column(Text, default="")
     color: Mapped[str] = mapped_column(String(16), default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     items: Mapped[list["ProjectAsset"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
 
@@ -199,8 +214,8 @@ class Pack(Base):
     keywords: Mapped[list] = mapped_column(JSON, default=list)
     # who wrote the description: {"by": "user" | "lmstudio" | "clip", "model": ...}
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 
 
 class ProjectAsset(Base):
@@ -209,7 +224,7 @@ class ProjectAsset(Base):
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True)
     asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), primary_key=True)
     note: Mapped[str] = mapped_column(Text, default="")
-    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    added_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     project: Mapped[Project] = relationship(back_populates="items")
     asset: Mapped[Asset] = relationship()
 
@@ -229,9 +244,9 @@ class Job(Base):
     asset_id: Mapped[int | None] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), nullable=True, index=True)
     source_id: Mapped[int | None] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"), nullable=True, index=True)
     dedupe_key: Mapped[str] = mapped_column(String(300), default="", index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
 
 class Delivery(Base):
@@ -246,8 +261,8 @@ class Delivery(Base):
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)  # pending | delivered | failed
     client: Mapped[str] = mapped_column(String(200), default="")
     message: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    delivered_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
 
 class AssetEmbedding(Base):
@@ -260,4 +275,4 @@ class AssetEmbedding(Base):
     vector: Mapped[bytes] = mapped_column(LargeBinary)
     # sha256 of the thumbnail it was computed from - a new thumbnail means a new embedding
     source_sha: Mapped[str] = mapped_column(String(64), default="")
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)

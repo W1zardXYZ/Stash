@@ -674,7 +674,10 @@ class Scanner:
         add_linked_file(a, b, "source")
         thumb = _blend_thumbnail(b)
         if thumb:
+            current = a.thumbnail_file_id
             self.set_thumbnail_bytes(a, thumb, ".png", label="embedded")
+            if current is not None:
+                a.thumbnail_file_id = current  # keep a render from extraction or one picked by hand
         if changed or not a.meta.get("extracted"):
             if blender.available():
                 self.queue("extract_blend", a)

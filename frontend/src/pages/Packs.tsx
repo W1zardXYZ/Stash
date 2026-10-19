@@ -120,7 +120,7 @@ function PackModal({ name, onClose, onSaved }: { name: string; onClose: () => vo
     <Modal
       title={`Describe "${name}"`}
       onClose={onClose}
-      footer={<>{p?.description && <button className="btn ghost danger" onClick={clear}>Clear</button>}<span className="grow" /><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={save}>Save</button></>}
+      footer={<>{p?.description && <button className="btn ghost danger" onClick={clear}>Clear</button>}<span className="grow" /><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={save} disabled={!p}>Save</button></>}
     >
       {!p ? <div className="muted">Loading…</div> : (
         <>

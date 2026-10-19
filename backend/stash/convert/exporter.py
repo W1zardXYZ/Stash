@@ -145,21 +145,23 @@ def _input_for(db: Session, asset: Asset) -> dict:
     return spec
 
 
+def _material_maps(db: Session, m: Asset) -> dict[str, str]:
+    """A material's own texture files, or (materials split from a .blend) its linked texture assets."""
+    maps = pbr_maps(m)
+    if not maps:
+        for t in linked(db, m, "uses_texture"):
+            src = first(t, "source")
+            ch = (t.meta or {}).get("channel") or "base_color"
+            if src and resolve(src).exists():
+                maps.setdefault(ch, str(resolve(src)))
+    return maps
+
+
 def _texture_channels_for_unreal(db: Session, asset: Asset) -> list[dict]:
     """Materials + their texture files for the Unreal importer manifest."""
     mats = []
-    if asset.kind == "material":
-        maps = pbr_maps(asset)
-        if maps:
-            mats.append({"name": asset.name, "maps": maps})
-    for m in linked(db, asset, "uses_material"):
-        maps = pbr_maps(m)
-        if not maps:
-            for t in linked(db, m, "uses_texture"):
-                src = first(t, "source")
-                ch = (t.meta or {}).get("channel") or "base_color"
-                if src and resolve(src).exists():
-                    maps.setdefault(ch, str(resolve(src)))
+    for m in ([asset] if asset.kind == "material" else []) + linked(db, asset, "uses_material"):
+        maps = _material_maps(db, m)
         if maps:
             mats.append({"name": m.name, "maps": maps})
     if not mats:
@@ -241,8 +243,10 @@ def _export_image(asset: Asset, work: Path, name: str, target: str) -> Path:
     except Exception as e:
         if not blender.available():
             raise ExportError(f"cannot convert image: {e}")
-        blender.run_script("preview_model.py", ["--image", str(resolve(src)), "--thumb", str(dest.with_suffix(".png")), "--size", "16384"])
-        return dest.with_suffix(".png")
+        # Blender decodes what Pillow can't (EXR, HDR) into a full-size PNG; Pillow then writes the target
+        png = work / f"{name}_decoded.png"
+        blender.run_script("preview_model.py", ["--image", str(resolve(src)), "--thumb", str(png), "--size", "16384"])
+        return convert_image(png, dest)
 
 
 def _export_blender(db, asset, work: Path, name: str, target: str, should_cancel=None) -> Path:

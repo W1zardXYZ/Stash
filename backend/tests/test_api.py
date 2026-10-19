@@ -256,3 +256,20 @@ def test_scaled_image(app_client):
     from PIL import Image
 
     assert max(Image.open(io.BytesIO(r.content)).size) <= 32
+
+
+def test_timestamps_are_utc_aware(app_client, run_jobs, tmp_path):
+    """SQLite drops the offset; without it browsers read UTC as local time."""
+    from datetime import datetime, timezone
+
+    from helpers import write_png
+
+    write_png(tmp_path / "a.png")
+    src = app_client.post("/api/sources", json={"path": str(tmp_path)}).json()
+    run_jobs()
+    src = next(s for s in app_client.get("/api/sources").json() if s["id"] == src["id"])
+    job = app_client.get("/api/jobs", params={"limit": 1}).json()["items"][0]
+    for value in (src["last_scan_at"], job["created_at"], job["finished_at"]):
+        t = datetime.fromisoformat(value)
+        assert t.utcoffset() is not None and t.utcoffset().total_seconds() == 0, value
+        assert abs((datetime.now(timezone.utc) - t).total_seconds()) < 300, value

@@ -181,7 +181,8 @@ while True:
 print(f"jobs settled after {time.time() - t0:.0f}s: {st['jobs']}")
 errors = call("GET", "/jobs?status=error&limit=50")["items"]
 check("no failed jobs", not errors, "; ".join(f"{j['type']}: {j['message'][:120]}" for j in errors))
-items = {a["name"]: a for a in call("GET", f"/assets?source={src['id']}&per_page=500")["items"]}
+assets = call("GET", f"/assets?source={src['id']}&per_page=500")["items"]
+items = {a["name"]: a for a in assets}  # names repeat (a .blend's object and material); use `assets` to scan all
 print("assets:", sorted(items))
 for name in ("Fox", "DamagedHelmet", "marble_bust_01_1k", "rock_wall_08"):
     check(f"indexed {name}", name in items)
@@ -189,10 +190,10 @@ fox = items.get("Fox")
 check("Fox is rigged + animated", fox and fox["is_rigged"] and fox["is_animated"])
 st = call("GET", "/status")
 if st.get("blender"):
-    check("blend split into objects", any(a["parent_id"] for a in items.values()), "children of wooden_stool_02_1k.blend")
-    with_thumb = [n for n, a in items.items() if a["thumbnail"]]
-    check("thumbnails", len(with_thumb) >= len(items) // 2, f"{len(with_thumb)}/{len(items)}")
-    target = next((a for a in items.values() if a["kind"] == "model" and a["parent_id"]), fox)
+    check("blend split into objects", any(a["parent_id"] for a in assets), "children of wooden_stool_02_1k.blend")
+    with_thumb = [a for a in assets if a["thumbnail"]]
+    check("thumbnails", len(with_thumb) >= len(assets) // 2, f"{len(with_thumb)}/{len(assets)}")
+    target = next((a for a in assets if a["kind"] == "model" and a["parent_id"]), fox)
     job = call("POST", f"/assets/{target['id']}/export", {"target": "glb"})
     while "job_id" in job:
         j = call("GET", f"/jobs/{job['job_id']}")

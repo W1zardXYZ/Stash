@@ -187,7 +187,9 @@ def ingest_manifest(db: Session, parent: Asset, manifest: dict, out_dir: Path, c
                     a.thumbnail_file_id = t.thumbnail_file_id
                     a.preview_file_id = t.preview_file_id
                     break
-    if parent.thumbnail_file_id is None:
+    # a rendered model beats the file's embedded preview (128 px, often a screenshot of Blender's UI)
+    embedded = {f.id for f in parent.files if f.role == "thumbnail" and f.label == "embedded"}
+    if parent.thumbnail_file_id is None or parent.thumbnail_file_id in embedded:
         for a in by_key.values():
             if a.thumbnail_file_id and a.kind in ("model", "skeletal_model"):
                 parent.thumbnail_file_id = a.thumbnail_file_id
@@ -486,8 +488,6 @@ def scheduler_loop(stop_event) -> None:
                     if hours <= 0 or src.status == "scanning":
                         continue
                     last = src.last_scan_at
-                    if last is not None and last.tzinfo is None:
-                        last = last.replace(tzinfo=timezone.utc)
                     if last is None or now - last >= timedelta(hours=hours):
                         enqueue("scan_source", {}, source_id=src.id, priority=PRIORITY["scan_source"], db=db)
         except Exception:  # keep the scheduler alive
@@ -533,7 +533,7 @@ def job_package_project(ctx: JobContext):
         with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
             for i, aid in enumerate(asset_ids):
                 ctx.check_cancel()
-                ctx.progress(i / max(len(asset_ids), 1), f"{i}/{len(asset_ids)}")
+                ctx.progress(i / max(len(asset_ids), 1), f"{i + 1}/{len(asset_ids)}")
                 with session_scope() as db:
                     asset = db.get(Asset, aid)
                     if asset is None:

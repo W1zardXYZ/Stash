@@ -39,3 +39,40 @@ def test_megascans_sidecar_json(app_client, run_jobs, tmp_path):
     assert model["meta"]["sidecar"]["name"] == "Mossy Rock"
     assert model["meta"]["sidecar"]["properties"]["Height"] == "1.2 m"
     assert "forest" in items["vkpgcfd"]["tags"]  # the texture set too
+
+
+def test_blend_render_beats_embedded_preview(app_client, run_jobs, tmp_path, monkeypatch):
+    """The parent .blend shows its rendered model, not the small embedded preview, also after a rescan."""
+    import io
+
+    from PIL import Image
+
+    from stash.db import session_scope
+    from stash.ingest import scanner
+    from stash.models import Asset
+    from stash.processing import ingest_manifest
+
+    def png(color):
+        buf = io.BytesIO()
+        Image.new("RGB", (16, 16), color).save(buf, "PNG")
+        return buf.getvalue()
+
+    monkeypatch.setattr(scanner, "_blend_thumbnail", lambda path: png((0, 0, 255)))
+    (tmp_path / "chair.blend").write_bytes(b"BLENDER-v405")
+    src = app_client.post("/api/sources", json={"path": str(tmp_path)}).json()
+    run_jobs()
+    parent_id = app_client.get("/api/assets", params={"source": src["id"]}).json()["items"][0]["id"]
+
+    out = tmp_path.parent / "extract_out"
+    out.mkdir()
+    (out / "chair.png").write_bytes(png((255, 0, 0)))
+    manifest = {"assets": [{"key": "OB:Chair", "name": "Chair", "kind": "model", "files": {"thumbnail": "chair.png"}}]}
+    with session_scope() as db:
+        ingest_manifest(db, db.get(Asset, parent_id), manifest, out)
+
+    rendered = app_client.get(f"/api/assets/{parent_id}").json()["thumbnail"]
+    child = next(a for a in app_client.get("/api/assets", params={"source": src["id"]}).json()["items"] if a["name"] == "Chair")
+    assert rendered == child["thumbnail"]
+    app_client.post(f"/api/sources/{src['id']}/scan")
+    run_jobs()
+    assert app_client.get(f"/api/assets/{parent_id}").json()["thumbnail"] == rendered

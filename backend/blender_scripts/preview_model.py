@@ -42,7 +42,7 @@ def parse():
 def image_thumb(src, dest, size):
     img = bpy.data.images.load(src)
     w, h = img.size
-    if w and h:
+    if w and h and max(w, h) > size:  # only ever shrink
         s = size / max(w, h)
         img.scale(max(1, int(w * s)), max(1, int(h * s)))
     scene = bpy.context.scene

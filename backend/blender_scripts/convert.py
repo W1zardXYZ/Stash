@@ -62,7 +62,9 @@ def import_file(path):
     elif ext == ".obj":
         bpy.ops.wm.obj_import(filepath=path)
     elif ext in (".gltf", ".glb"):
-        bpy.ops.import_scene.gltf(filepath=path)
+        # no "Icosphere" bone-shape helper: it would end up in every per-asset .blend and export
+        opts = {"disable_bone_shape": True} if "disable_bone_shape" in bpy.ops.import_scene.gltf.get_rna_type().properties else {}
+        bpy.ops.import_scene.gltf(filepath=path, **opts)
     elif ext == ".stl":
         bpy.ops.wm.stl_import(filepath=path)
     elif ext == ".ply":
