@@ -168,6 +168,16 @@ def ingest_manifest(db: Session, parent: Asset, manifest: dict, out_dir: Path, c
     parent.is_animated = any(a.kind == "animation" for a in by_key.values())
     parent.is_procedural = any(a.is_procedural for a in by_key.values())
     parent.has_textures = any(a.kind == "texture" for a in by_key.values())
+    # animations borrow the thumbnail of the rig they animate
+    for key, a in by_key.items():
+        if a.kind == "animation" and a.thumbnail_file_id is None:
+            entry = next(e for e in manifest["assets"] if e["key"] == key)
+            for tk in entry.get("targets", []) or []:
+                t = by_key.get(tk)
+                if t is not None and t.thumbnail_file_id:
+                    a.thumbnail_file_id = t.thumbnail_file_id
+                    a.preview_file_id = t.preview_file_id
+                    break
     if parent.thumbnail_file_id is None:
         for a in by_key.values():
             if a.thumbnail_file_id and a.kind in ("model", "skeletal_model"):

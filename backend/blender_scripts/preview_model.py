@@ -75,7 +75,11 @@ def main():
                         if m is None or not (m.use_nodes and any(n.bl_idname == "ShaderNodeTexImage" for n in m.node_tree.nodes)):
                             mats[i] = mat
     scene = bpy.context.scene
-    objs = [ob for ob in scene.objects if ob.type not in ("CAMERA", "LIGHT")]
+    # skip bone custom-shape helpers (the glTF importer adds an "Icosphere") and hidden objects
+    shapes = {pb.custom_shape for ob in scene.objects if ob.type == "ARMATURE" for pb in ob.pose.bones if pb.custom_shape}
+    objs = [ob for ob in scene.objects if ob.type not in ("CAMERA", "LIGHT") and ob not in shapes and not ob.hide_render and ob.visible_get()]
+    for ob in shapes:
+        ob.hide_render = True
     stats = {"objects": len(objs), "bones": sum(len(ob.data.bones) for ob in objs if ob.type == "ARMATURE"), "actions": [a.name for a in bpy.data.actions]}
     if o["glb"]:
         for ob in bpy.context.view_layer.objects:

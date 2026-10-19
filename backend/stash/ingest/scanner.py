@@ -373,8 +373,9 @@ class Scanner:
             first = next(iter(chans.values()))
             nice = next(iter(chans.values())).stem
             nice = split_texture_name(nice)[0] or base
+            folder_rel = self.rel(gdir, prefix)
             a = self.upsert(
-                self.rel(gdir, prefix) + f"#{base}",
+                f"{folder_rel}#{base}" if folder_rel not in (".", "") else f"#{base}",
                 name=nice,
                 kind="material",
                 format="pbr",

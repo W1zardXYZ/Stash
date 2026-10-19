@@ -284,8 +284,8 @@ def _export_blender(db, asset, work: Path, name: str, target: str, should_cancel
 
 
 def _export_unreal_package(db, asset, work: Path, name: str, should_cancel=None) -> Path:
-    pkg = work / name
-    pkg.mkdir()
+    pkg = work / "_package" / name
+    pkg.mkdir(parents=True)
     tex_dir = pkg / "Textures"
     manifest: dict = {"stash_version": 1, "name": asset.name, "kind": asset.kind, "uid": asset.uid, "materials": [], "files": {}}
     if asset.kind != "material":
@@ -297,7 +297,7 @@ def _export_unreal_package(db, asset, work: Path, name: str, should_cancel=None)
         shutil.copyfile(fbx, pkg / f"{name}.fbx")
         manifest["files"]["mesh"] = f"{name}.fbx"
         manifest["skeletal"] = asset.kind in ("skeletal_model", "animation") or asset.is_rigged
-        manifest["animations"] = [a.get("name") for a in (asset.meta or {}).get("inspect", {}).get("animations", [])] or (asset.meta or {}).get("actions", [])
+        manifest["animations"] = [a.get("name", "").split("|")[-1] for a in (asset.meta or {}).get("inspect", {}).get("animations", [])] or (asset.meta or {}).get("actions", [])
     for mat in _texture_channels_for_unreal(db, asset):
         entry = {"name": mat["name"], "maps": {}}
         for ch, path in mat["maps"].items():
