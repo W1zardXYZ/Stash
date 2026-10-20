@@ -121,6 +121,7 @@ def convert(
     pbr: dict | list[dict] | None = None,
     material_only: bool = False,
     append: list[str] | None = None,
+    action: str | None = None,
     should_cancel=None,
 ) -> str:
     import json
@@ -141,4 +142,6 @@ def convert(
         args.append("--material-only")
     for a in append or []:
         args += ["--append-blend", a]
+    if action:
+        args += ["--action", action]
     return run_script("convert.py", args, blend_file=blend, should_cancel=should_cancel)

@@ -275,13 +275,21 @@ class EmbeddingIndex:
             self.mat = np.zeros((0, 512), dtype=np.float16)
         self.dirty = False
 
-    def search(self, db, vec: np.ndarray, limit: int = 500, min_score: float = 0.0, exclude: int | None = None) -> list[tuple[int, float]]:
+    def search(
+        self, db, vec: np.ndarray, limit: int = 500, min_score: float = 0.0, exclude: int | None = None, min_z: float | None = None
+    ) -> list[tuple[int, float]]:
+        """Best matches by cosine. `min_z` keeps only scores that many standard deviations above the mean
+        score of all other assets - "stands out from the library" rather than an absolute number. With
+        fewer than 10 other assets those statistics mean nothing and `min_score` applies instead."""
         with self.lock:
             if self.dirty:
                 self._load(db)
             if not len(self.ids):
                 return []
             scores = self.mat.astype(np.float32) @ vec.astype(np.float32)
+            others = scores[self.ids != exclude] if exclude is not None else scores
+        if min_z is not None and len(others) >= 10:
+            min_score = float(others.mean() + min_z * others.std())
         order = np.argsort(-scores)[: limit + 1]
         return [(int(self.ids[i]), float(scores[i])) for i in order if scores[i] >= min_score and int(self.ids[i]) != exclude][:limit]
 
@@ -318,4 +326,6 @@ def similar(db, asset_id: int, limit: int = 24) -> list[tuple[int, float]]:
     row = db.get(AssetEmbedding, asset_id)
     if row is None:
         return []
-    return index.search(db, np.frombuffer(row.vector, dtype=np.float16).astype(np.float32), limit=limit, min_score=0.5, exclude=asset_id)
+    # thumbnails of 3D renders all look alike to CLIP (median pair ~0.73 on a real library), so an
+    # absolute threshold returns everything; keep what stands out for this asset
+    return index.search(db, np.frombuffer(row.vector, dtype=np.float16).astype(np.float32), limit=limit, exclude=asset_id, min_z=1.5, min_score=0.85)

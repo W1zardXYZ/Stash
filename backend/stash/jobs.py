@@ -23,6 +23,7 @@ log = logging.getLogger("stash.jobs")
 
 _handlers: dict[str, Callable[["JobContext"], dict | None]] = {}
 _claim_lock = threading.Lock()
+_enqueue_lock = threading.Lock()
 _wake = threading.Event()
 
 
@@ -99,15 +100,18 @@ def enqueue(
     priority: int = 0,
     dedupe: bool = True,
     db=None,
+    only_queued: bool = False,
 ) -> int:
-    """Queue a job. With dedupe, an identical queued/running job is reused."""
+    """Queue a job. With dedupe, an identical queued/running job is reused (`only_queued`: only a queued
+    one - for work a running job may already be past)."""
     payload = payload or {}
     key = f"{job_type}:{asset_id}:{source_id}:{sorted(payload.items()) if dedupe else time.time()}"
     key = key[:300]
 
     def _do(s):
         if dedupe:
-            existing = s.query(Job).filter(Job.dedupe_key == key, Job.status.in_(("queued", "running"))).first()
+            statuses = ("queued",) if only_queued else ("queued", "running")
+            existing = s.query(Job).filter(Job.dedupe_key == key, Job.status.in_(statuses)).first()
             if existing:
                 return existing.id
         job = Job(type=job_type, payload=payload, asset_id=asset_id, source_id=source_id, priority=priority, dedupe_key=key)
@@ -118,7 +122,8 @@ def enqueue(
     if db is not None:
         jid = _do(db)
     else:
-        with session_scope() as s:
+        # check + insert + commit as one step: two workers finishing at once must not both add the job
+        with _enqueue_lock, session_scope() as s:
             jid = _do(s)
     _wake.set()
     return jid

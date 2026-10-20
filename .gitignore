@@ -11,3 +11,4 @@ frontend/dist/
 dev-data/
 dev-library/
 .DS_Store
+frontend/tsconfig.tsbuildinfo

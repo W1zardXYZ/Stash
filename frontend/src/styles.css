@@ -102,7 +102,7 @@ code, pre { font-family: var(--mono); font-size: 12px; }
 }
 .facet {
   display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 7px; cursor: pointer;
-  color: var(--text-2); user-select: none;
+  color: var(--text-2); user-select: none; width: 100%; border: 0; background: none; font: inherit; text-align: left;
 }
 .facet:hover { background: var(--panel); color: var(--text); }
 .facet.on { background: var(--accent-soft); color: var(--text); }
@@ -364,3 +364,6 @@ pre.log { background: var(--bg); border: 1px solid var(--border); border-radius:
   .bulkbar { left: 60px; right: 8px; transform: none; flex-wrap: wrap; }
   .library.show-side .sidebar { inset: 0 auto 0 52px; }
 }
+
+/* keyboard focus (inputs show focus with their border instead) */
+:where(button, a, select, [tabindex]):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

@@ -13,11 +13,11 @@ from sqlalchemy.orm import Session
 
 from . import blender
 from .config import settings
-from .convert.exporter import available_targets, export_asset
+from .convert.exporter import available_targets, cached_export, export_asset
 from .db import session_scope
 from .images import make_thumbnail
 from .ingest.formats import kind_for_path
-from .ingest.scanner import scan_source
+from .ingest.scanner import scan_source, share_thumbnail_with_clips
 from .jobs import JobContext, enqueue, handler
 from .models import Asset, AssetFile, AssetLink, Job, Project, Source, Tag
 from .search import index_asset
@@ -300,6 +300,8 @@ def job_preview(ctx: JobContext):
                     asset.kind = "skeletal_model"
             if stats.get("actions"):
                 asset.is_animated = True
+            db.flush()
+            share_thumbnail_with_clips(db, asset)
         queue_embeddings()
         return {"stats": stats}
     finally:
@@ -451,9 +453,12 @@ def job_embed_pending(ctx: JobContext):
                 done += 1
         ctx.progress((i + 1) / max(len(batch), 1), f"{i + 1}/{len(batch)}")
     vision.index.invalidate()
-    if len(batch) == EMBED_BATCH:
-        # more left: re-queue so scans/exports can run in between batches
-        enqueue("embed_pending", {}, priority=PRIORITY["embed_pending"], dedupe=False)
+    with session_scope() as db:
+        more = bool(_pending_embeddings(db, 1))
+    if more:
+        # the next batch, or thumbnails that arrived while this one ran (their queue_embeddings() was
+        # folded into this job); a separate job lets scans/exports run in between batches
+        enqueue("embed_pending", {}, priority=PRIORITY["embed_pending"], only_queued=True)
     return {"embedded": done, "failed": failed}
 
 
@@ -543,9 +548,8 @@ def job_package_project(ctx: JobContext):
                     if t is None:
                         errors.append(f"{asset.name}: no export available")
                         continue
-                    cached = next((f for f in asset.files if f.role == "export" and f.label == t and (f.meta or {}).get("fingerprint") == asset.fingerprint), None)
                     try:
-                        af = cached or export_asset(db, asset, t, should_cancel=ctx.cancelled)
+                        af = cached_export(asset, t) or export_asset(db, asset, t, should_cancel=ctx.cancelled)
                     except Exception as e:
                         errors.append(f"{asset.name}: {e}")
                         continue

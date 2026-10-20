@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Project, TARGET_LABELS, api, waitForJob } from "../api";
 import { Icon } from "../components/Icon";
-import { Modal, Progress, useToast } from "../components/ui";
+import { Modal, Progress, pressable, useToast } from "../components/ui";
 import Library from "./Library";
 
-const COLORS = ["#7c5cff", "#3ecf8e", "#f5a524", "#f0506e", "#4fa3ff", "#2ec4c4", "#ff7a45", "#a3aab6"];
+const COLORS: Record<string, string> = { "#7c5cff": "Violet", "#3ecf8e": "Green", "#f5a524": "Amber", "#f0506e": "Red", "#4fa3ff": "Blue", "#2ec4c4": "Teal", "#ff7a45": "Orange", "#a3aab6": "Gray" };
 
 export function ProjectList() {
   const navigate = useNavigate();
@@ -28,7 +28,7 @@ export function ProjectList() {
           {projects.map((p) => {
             const covers = p.covers.filter(Boolean) as string[];
             return (
-              <div key={p.id} className="panel proj-card" onClick={() => navigate(`/projects/${p.id}`)}>
+              <div key={p.id} className="panel proj-card" {...pressable(() => navigate(`/projects/${p.id}`))} aria-label={p.name}>
                 <div className={`covers ${covers.length < 2 ? "one" : ""}`} style={{ borderBottom: `3px solid ${p.color || "var(--accent)"}` }}>
                   {covers.length ? covers.slice(0, 2).map((c) => <img key={c} src={c} alt="" />) : <div style={{ display: "grid", placeItems: "center", color: "var(--text-3)" }}><Icon name="project" size={36} stroke={1.1} /></div>}
                 </div>
@@ -50,7 +50,7 @@ function ProjectModal({ project, onClose, onSaved }: { project?: Project; onClos
   const toast = useToast();
   const [name, setName] = useState(project?.name ?? "");
   const [description, setDescription] = useState(project?.description ?? "");
-  const [color, setColor] = useState(project?.color || COLORS[0]);
+  const [color, setColor] = useState(project?.color || Object.keys(COLORS)[0]);
   const save = async () => {
     try {
       const body = { name, description, color };
@@ -64,7 +64,7 @@ function ProjectModal({ project, onClose, onSaved }: { project?: Project; onClos
     <Modal title={project ? "Edit project" : "New project"} onClose={onClose} footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" disabled={!name} onClick={save}>Save</button></>}>
       <label className="field"><span>Name</span><input className="input" autoFocus value={name} onChange={(e) => setName(e.target.value)} /></label>
       <label className="field"><span>Description</span><textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} /></label>
-      <div className="row">{COLORS.map((c) => <button key={c} onClick={() => setColor(c)} style={{ width: 26, height: 26, borderRadius: 7, background: c, border: color === c ? "2px solid var(--text)" : "2px solid transparent", cursor: "pointer" }} />)}</div>
+      <div className="row">{Object.entries(COLORS).map(([c, label]) => <button key={c} onClick={() => setColor(c)} title={label} aria-pressed={color === c} style={{ width: 26, height: 26, borderRadius: 7, background: c, border: color === c ? "2px solid var(--text)" : "2px solid transparent", cursor: "pointer" }} />)}</div>
     </Modal>
   );
 }
@@ -81,14 +81,14 @@ export function ProjectPage() {
   if (!p) return <div className="page muted">Loading…</div>;
   const header = (
     <div className="toolbar" style={{ borderBottom: `2px solid ${p.color || "var(--accent)"}` }}>
-      <button className="btn ghost icon" onClick={() => navigate("/projects")}><Icon name="back" size={16} /></button>
+      <button className="btn ghost icon" onClick={() => navigate("/projects")} title="All projects"><Icon name="back" size={16} /></button>
       <div className="grow">
         <strong style={{ fontSize: 16 }}>{p.name}</strong>
         <span className="muted small" style={{ marginLeft: 10 }}>{p.count} assets {p.description && `· ${p.description}`}</span>
       </div>
       <button className="btn" onClick={() => setEditing(true)}><Icon name="edit" size={14} />Edit</button>
       <button className="btn primary" onClick={() => setExporting(true)}><Icon name="download" size={14} />Export project</button>
-      <button className="btn ghost icon danger" onClick={async () => { if (confirm(`Delete project "${p.name}"? Assets stay in the library.`)) { await api.del(`/api/projects/${p.id}`); navigate("/projects"); } }}><Icon name="trash" size={14} /></button>
+      <button className="btn ghost icon danger" title="Delete project" onClick={async () => { if (confirm(`Delete project "${p.name}"? Assets stay in the library.`)) { await api.del(`/api/projects/${p.id}`); navigate("/projects"); } }}><Icon name="trash" size={14} /></button>
     </div>
   );
   return (

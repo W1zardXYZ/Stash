@@ -43,7 +43,8 @@ def test_blend_extraction_and_exports(app_client, run_jobs, tmp_path):
     assert worm["is_rigged"] and worm["is_animated"] and worm["has_preview"]
     marble = c.get(f"/api/assets/{items[('ProceduralMarble', 'material')]['id']}").json()
     assert marble["is_procedural"] and any(n["type"] == "ShaderNodeTexNoise" for n in marble["meta"]["graph"]["nodes"])
-    wiggle = c.get(f"/api/assets/{items[('Wiggle', 'animation')]['id']}").json()
+    anims = c.get("/api/assets", params={"source": src["id"], "kind": "animation", "per_page": 50}).json()["items"]
+    wiggle = c.get(f"/api/assets/{next(a for a in anims if a['name'] == 'Wiggle' and a['format'] == 'blend')['id']}").json()
     assert any(l["relation"] == "animates" and l["asset"]["name"] == "Worm" for l in wiggle["links"])
     fbx = items[("worm", "skeletal_model")]  # worm.fbx gets a GLB preview through Blender
     assert fbx["has_preview"]
@@ -56,14 +57,17 @@ def test_blend_extraction_and_exports(app_client, run_jobs, tmp_path):
         (items[("cube", "model")], "stl", lambda d: len(d) > 84),
         # a material split from a .blend carries its textures through links, not files of its own
         (items[("CrateMat", "material")], "unreal", lambda d: any(m["maps"] for m in json.loads(zipfile.ZipFile(io.BytesIO(d)).read("CrateMat/stash_manifest.json"))["materials"])),
+        # a clip of a rigged glb exports alone: its own action, not the file's others
+        (next(a for a in c.get("/api/assets", params={"source": src["id"], "kind": "animation", "q": "Wiggle", "per_page": 50}).json()["items"] if a["parent_id"] and a["format"] == "glb"), "fbx", lambda d: b"Wiggle" in d and b"Bend" not in d),
         # EXR is decoded by Blender, then written in the requested format at its own size
         # one Painter texture set per material slot, not the first set everywhere
         (items[("SM_Arch_LP", "model")], "glb", lambda d: {"SM_Arch_LP_lambert1", "SM_Arch_LP_lambert2"} <= {m["name"] for m in _glb_json(d)["materials"]}),
         # the glTF importer's bone-shape helper ("Icosphere") must not come along
-        (next(a for a in c.get("/api/assets", params={"source": src["id"], "q": "worm", "per_page": 50}).json()["items"] if a["format"] == "glb"), "fbx", lambda d: d.startswith(b"Kaydara FBX Binary") and b"Icosphere" not in d),
+        (next(a for a in c.get("/api/assets", params={"source": src["id"], "q": "worm", "per_page": 50}).json()["items"] if a["format"] == "glb" and a["kind"] == "skeletal_model"), "fbx", lambda d: d.startswith(b"Kaydara FBX Binary") and b"Icosphere" not in d),
         (next(a for (n, _), a in items.items() if n == "sky"), "jpg", lambda d: Image.open(io.BytesIO(d)).format == "JPEG" and Image.open(io.BytesIO(d)).size == (64, 32)),
     ):
         r = c.post(f"/api/assets/{asset['id']}/export", json={"target": target}).json()
+        assert "job_id" in r, (asset["name"], asset["kind"], target, r)
         run_jobs()
         job = c.get(f"/api/jobs/{r['job_id']}").json()
         assert job["status"] == "done", (target, job["message"])

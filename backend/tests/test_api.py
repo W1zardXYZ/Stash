@@ -273,3 +273,49 @@ def test_timestamps_are_utc_aware(app_client, run_jobs, tmp_path):
         t = datetime.fromisoformat(value)
         assert t.utcoffset() is not None and t.utcoffset().total_seconds() == 0, value
         assert abs((datetime.now(timezone.utc) - t).total_seconds()) < 300, value
+
+
+def test_export_cache_follows_converter_version(app_client, run_jobs, tmp_path, monkeypatch):
+    """A cached export is reused, but not after the converter code changed."""
+    from helpers import write_png
+
+    from stash.convert import exporter
+
+    write_png(tmp_path / "Bricks_BaseColor.png")
+    src = app_client.post("/api/sources", json={"path": str(tmp_path)}).json()
+    run_jobs()
+    tex = app_client.get("/api/assets", params={"source": src["id"]}).json()["items"][0]
+    first = app_client.post(f"/api/assets/{tex['id']}/export", json={"target": "jpg"}).json()
+    run_jobs()
+    assert app_client.get(f"/api/jobs/{first['job_id']}").json()["status"] == "done"
+    assert "file" in app_client.post(f"/api/assets/{tex['id']}/export", json={"target": "jpg"}).json()
+    monkeypatch.setattr(exporter, "CONVERTER_VERSION", "changed")
+    assert "job_id" in app_client.post(f"/api/assets/{tex['id']}/export", json={"target": "jpg"}).json()
+    run_jobs()
+
+
+def test_concurrent_enqueue_dedupes(app_client):
+    """Workers finishing together each call queue_embeddings(); that must give one job, not several."""
+    import threading
+
+    from stash.db import session_scope
+    from stash.jobs import enqueue
+    from stash.models import Job
+
+    start = threading.Barrier(8)
+
+    def go():
+        start.wait()
+        enqueue("dedupe_probe", {})
+
+    threads = [threading.Thread(target=go) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    with session_scope() as db:
+        jobs = db.query(Job).filter(Job.type == "dedupe_probe").all()
+        n = len(jobs)
+        for j in jobs:
+            db.delete(j)
+    assert n == 1

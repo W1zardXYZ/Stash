@@ -40,7 +40,7 @@ Run from the repo root. Expected results are what the same steps give on Linux.
 1. **Update:** `git fetch origin && git checkout claude/zealous-thompson-fv7gqn && git pull`
 2. **Setup:** `scripts/dev.sh setup` – creates `backend/.venv`, installs Python + npm packages,
    prints the Python/Node/Blender it found.
-3. **Unit/API tests:** `scripts/dev.sh test` → `44 passed, 1 skipped`, then the frontend
+3. **Unit/API tests:** `scripts/dev.sh test` → `49 passed, 1 skipped`, then the frontend
    typecheck + build succeed.
 4. **Real-Blender pipeline:** `scripts/dev.sh test-blender` → `1 passed` (builds `.blend`/FBX/GLB
    fixtures with Blender, splits them, converts to blend/fbx/unreal/glb/stl, and checks the
@@ -52,9 +52,9 @@ Run from the repo root. Expected results are what the same steps give on Linux.
 6. **API smoke test:** `scripts/dev.sh smoke` → ends with `SMOKE OK`. It adds `dev-library` as a
    source, waits for all jobs (the first `embed_pending` run downloads the CLIP model), and checks
    indexing, `.blend` splitting, thumbnails, a GLB export, packs and search.
-7. **Blender add-on smoke test:** `scripts/dev.sh addon-smoke` → `7 passed, 0 failed, 1 skipped`
-   (installs the add-on from the server, imports a rigged model, a model, a material onto a cube
-   and an HDRI as the world, then pushes the cube back).
+7. **Blender add-on smoke test:** `scripts/dev.sh addon-smoke` → `8 passed, 0 failed, 0 skipped`
+   (installs the add-on from the server, imports a rigged model, a model, a material onto a cube,
+   an HDRI as the world and an animation clip onto the rig, then pushes the cube back).
 8. **UI pass.** Use a browser (Playwright/Chromium if you have it, otherwise ask the owner to click
    through) on http://localhost:5173 and check:
    * Library: thumbnails for all sample assets; filters (Type, Packs, Features) change the grid.
@@ -87,11 +87,6 @@ Run from the repo root. Expected results are what the same steps give on Linux.
 
 ## Known issues and gaps (fix if cheap, otherwise report)
 
-* Importing the `Fox` `.blend` into Blender also brings an `Icosphere` object: the glTF importer's
-  bone-shape helper ends up in the per-asset `.blend` (`backend/blender_scripts/extract_blend.py` /
-  `preview_model.py`).
-* Animations inside `.glb`/`.fbx` files don't become separate `animation` assets (only `.blend`
-  actions do), so `addon-smoke` skips its animation step on the sample library.
 * macOS-specific code that has never run on a Mac: Blender discovery in
   `backend/stash/config.py` (`_find_blender`), `os.setpriority` for Blender jobs
   (`backend/stash/blender.py`), onnxruntime/tokenizers on arm64 (`backend/stash/vision.py`), and

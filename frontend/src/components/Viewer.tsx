@@ -467,7 +467,7 @@ export default function Viewer({ source, initialClip, onCapture }: Props) {
       )}
       {clips.length > 0 && (
         <div className="anim-bar">
-          <button className="vbtn" onClick={() => setPlaying(!playing)}><Icon name={playing ? "pause" : "play"} size={13} /></button>
+          <button className="vbtn" onClick={() => setPlaying(!playing)} title={playing ? "Pause" : "Play"}><Icon name={playing ? "pause" : "play"} size={13} /></button>
           <select value={clip} onChange={(e) => setClip(e.target.value)}>
             {clips.map((c) => (
               <option key={c} value={c}>{c.split("|").pop()}</option>

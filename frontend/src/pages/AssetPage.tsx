@@ -25,11 +25,12 @@ function viewerSource(a: AssetDetail, related: AssetDetail | null): ViewerSource
     a.files.filter((f) => f.role === "texture" && f.label).forEach((f) => (maps[f.label] = f.url));
     if (Object.keys(maps).length) return { type: "pbr", maps };
   }
-  if (a.kind === "animation" && !a.preview && related?.preview) return { type: "model", url: related.preview.url, format: "glb" };
-  if (a.preview) {
+  // an animation without a preview of its own plays on the rig it animates
+  const shown = a.preview ? a : a.kind === "animation" && related?.preview ? related : null;
+  if (shown?.preview) {
     // a linked .gltf/.obj must load via the folder-relative route so its textures resolve
-    const url = a.preview.storage === "source" ? `/api/assets/${a.id}/raw/${encodeURIComponent(a.preview.name)}` : a.preview.url;
-    return { type: "model", url, format: a.preview.format || "glb" };
+    const url = shown.preview.storage === "source" ? `/api/assets/${shown.id}/raw/${encodeURIComponent(shown.preview.name)}` : shown.preview.url;
+    return { type: "model", url, format: shown.preview.format || "glb" };
   }
   const ueExport = a.files.find((f) => f.role === "ue_export");
   const model = ueExport ?? src;
@@ -241,7 +242,7 @@ export default function AssetPage() {
                 {a.projects.map((p) => (
                   <span key={p.id} className="tag">
                     <Link to={`/projects/${p.id}`}>{p.name}</Link>
-                    <button onClick={async () => { await api.del(`/api/projects/${p.id}/assets/${a.id}`); load(); }}><Icon name="x" size={12} /></button>
+                    <button onClick={async () => { await api.del(`/api/projects/${p.id}/assets/${a.id}`); load(); }} title="Remove from project"><Icon name="x" size={12} /></button>
                   </span>
                 ))}
               </div>
